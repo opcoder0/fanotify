@@ -216,11 +216,14 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 	fidType = FanotifyInitFlagNone
 	if flags&unix.FAN_REPORT_FID == unix.FAN_REPORT_FID {
 		fidType = FanotifyInitFlagFid
-	} else if flags&unix.FAN_REPORT_DIR_FID == unix.FAN_REPORT_DIR_FID {
+	}
+	if flags&unix.FAN_REPORT_DIR_FID == unix.FAN_REPORT_DIR_FID {
 		fidType = FanotifyInitFlagDirFid
-	} else if flags&unix.FAN_REPORT_NAME == unix.FAN_REPORT_NAME {
+	}
+	if flags&unix.FAN_REPORT_NAME == unix.FAN_REPORT_NAME {
 		fidType = FanotifyInitFlagReportName
-	} else if flags&unix.FAN_REPORT_DFID_NAME == unix.FAN_REPORT_DFID_NAME {
+	}
+	if flags&unix.FAN_REPORT_DFID_NAME == unix.FAN_REPORT_DFID_NAME {
 		fidType = FanotifyInitFlagDirFidName
 	}
 	listener := &Listener{
