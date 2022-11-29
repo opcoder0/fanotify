@@ -192,8 +192,8 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 		return nil, ErrInvalidFlagCombination
 	}
 	if flags&unix.FAN_REPORT_NAME == unix.FAN_REPORT_NAME {
-		if flags&unix.FAN_REPORT_DIR_FID != unix.FAN_REPORT_DIR_FID || flags&unix.FAN_REPORT_FID != unix.FAN_REPORT_FID {
-			return nil, fmt.Errorf("FAN_REPORT_NAME must be specified with FAN_REPORT_DIR_FID or FAN_REPORT_FID: %w", ErrInvalidFlagCombination)
+		if flags&unix.FAN_REPORT_DIR_FID != unix.FAN_REPORT_DIR_FID {
+			return nil, fmt.Errorf("FAN_REPORT_NAME must be specified with FAN_REPORT_DIR_FID: %w", ErrInvalidFlagCombination)
 		}
 	}
 	fd, err := unix.FanotifyInit(flags, eventFlags)
