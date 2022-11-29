@@ -55,6 +55,7 @@ type Listener struct {
 	mountpoint         *os.File
 	kernelMajorVersion int
 	kernelMinorVersion int
+	watches            map[string]bool
 	Events             chan Event
 }
 
@@ -159,6 +160,9 @@ func NewListener(mountpointPath string, maxEvents uint, withName bool) (*Listene
 }
 
 func (l *Listener) Start() {
+	if len(l.watches) == 0 {
+		panic("Nothing to watch. Add Directory/File to the listener to watch")
+	}
 	var fds [1]unix.PollFd
 	fds[0].Fd = int32(l.fd)
 	fds[0].Events = unix.POLLIN
@@ -226,6 +230,7 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 		mountpoint:         mountpoint,
 		kernelMajorVersion: maj,
 		kernelMinorVersion: min,
+		watches:            make(map[string]bool),
 		Events:             make(chan Event, maxEvents),
 	}
 	return listener, nil

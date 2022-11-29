@@ -30,35 +30,53 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 		int(meta.Event_len) <= n)
 }
 
-func (l *Listener) fanotifyMark(path string, flags uint, mask uint64) error {
+func (l *Listener) fanotifyMark(path string, flags uint, mask uint64, remove bool) error {
+	skip := true
 	if l == nil {
 		return ErrInvalidListener
 	}
-	return unix.FanotifyMark(l.fd, flags, mask, -1, path)
+	_, found := l.watches[path]
+	if found {
+		if remove {
+			delete(l.watches, path)
+			skip = false
+		}
+	} else {
+		if !remove {
+			l.watches[path] = true
+			skip = false
+		}
+	}
+	if !skip {
+		if err := unix.FanotifyMark(l.fd, flags, mask, -1, path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (l *Listener) AddDir(dir string, events uint64) error {
 	var flags uint
 	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events)
+	return l.fanotifyMark(dir, flags, events, false)
 }
 
 func (l *Listener) RemoveDir(dir string, events uint64) error {
 	var flags uint
 	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events)
+	return l.fanotifyMark(dir, flags, events, true)
 }
 
 func (l *Listener) AddLink(linkName string, events uint64) error {
 	var flags uint
 	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events)
+	return l.fanotifyMark(linkName, flags, events, false)
 }
 
 func (l *Listener) RemoveLink(linkName string, events uint64) error {
 	var flags uint
 	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events)
+	return l.fanotifyMark(linkName, flags, events, true)
 }
 
 func (l *Listener) AddFilesystem(path string, events uint64) error {
@@ -67,22 +85,26 @@ func (l *Listener) AddFilesystem(path string, events uint64) error {
 	}
 	var flags uint
 	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_FILESYSTEM
-	return l.fanotifyMark(path, flags, events)
+	return l.fanotifyMark(path, flags, events, false)
 }
 
 func (l *Listener) AddPath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, events)
+	return l.fanotifyMark(path, unix.FAN_MARK_ADD, events, false)
 }
 
 func (l *Listener) RemovePath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_REMOVE, events)
+	return l.fanotifyMark(path, unix.FAN_MARK_REMOVE, events, true)
 }
 
 func (l *Listener) RemoveAll() error {
 	if l == nil {
 		return ErrInvalidListener
 	}
-	return unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, "")
+	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
+		return err
+	}
+	l.watches = make(map[string]bool)
+	return nil
 }
 
 func getFileHandle(metadataLen uint16, buf []byte, i int) *unix.FileHandle {
