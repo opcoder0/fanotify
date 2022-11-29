@@ -16,7 +16,7 @@ import (
 
 var (
 	// ErrCapSysAdmin indicates caller is missing CAP_SYS_ADMIN permissions
-	ErrCapSysAdmin = errors.New("missing required CAP_SYS_ADMIN capability")
+	ErrCapSysAdmin = errors.New("require CAP_SYS_ADMIN capability")
 	// ErrInvalidFlagCombination indicates the bit/combination of flags are invalid
 	ErrInvalidFlagCombination = errors.New("invalid flag bits")
 )
