@@ -16,17 +16,9 @@ import (
 
 var (
 	// ErrCapSysAdmin indicates caller is missing CAP_SYS_ADMIN permissions
-	ErrCapSysAdmin = errors.New("missing required CAP_SYS_ADMIN capability")
+	ErrCapSysAdmin = errors.New("require CAP_SYS_ADMIN capability")
 	// ErrInvalidFlagCombination indicates the bit/combination of flags are invalid
 	ErrInvalidFlagCombination = errors.New("invalid flag bits")
-)
-
-const (
-	FanotifyInitFlagNone = iota
-	FanotifyInitFlagFid
-	FanotifyInitFlagDirFid
-	FanotifyInitFlagReportName
-	FanotifyInitFlagDirFidName
 )
 
 // Event holds the event information for the watched file/directory
@@ -49,12 +41,11 @@ type Listener struct {
 	fd int
 	// flags passed to fanotify_init
 	flags uint
-	// FanotifyInit flag type (FAN_REPORT_FID, FAN_REPORT_DIR_FID, FAN_REPORT_NAME, FAN_REPORT_DFID_NAME)
-	flagFidType int
 	// mount fd is the file descriptor of the mountpoint
 	mountpoint         *os.File
 	kernelMajorVersion int
 	kernelMinorVersion int
+	watches            map[string]bool
 	Events             chan Event
 }
 
@@ -114,16 +105,59 @@ func checkCapSysAdmin() (bool, error) {
 	return capSysAdmin, nil
 }
 
-func flagsValid(flags uint) bool {
-	check := func(n, k uint) bool {
+func flagsValid(flags uint) error {
+	isSet := func(n, k uint) bool {
 		return n&k == k
 	}
-	if check(flags, unix.FAN_REPORT_FID|unix.FAN_CLASS_CONTENT) {
-		return false
+	if isSet(flags, unix.FAN_REPORT_FID|unix.FAN_CLASS_CONTENT) {
+		return errors.New("FAN_REPORT_FID cannot be set with FAN_CLASS_CONTENT")
 	}
-	if check(flags, unix.FAN_REPORT_FID|unix.FAN_CLASS_PRE_CONTENT) {
-		return false
+	if isSet(flags, unix.FAN_REPORT_FID|unix.FAN_CLASS_PRE_CONTENT) {
+		return errors.New("FAN_REPORT_FID cannot be set with FAN_CLASS_PRE_CONTENT")
 	}
+	if isSet(flags, unix.FAN_REPORT_NAME) {
+		if !isSet(flags, unix.FAN_REPORT_DIR_FID) {
+			return errors.New("FAN_REPORT_NAME must be set with FAN_REPORT_DIR_FID")
+		}
+	}
+	return nil
+}
+
+// Check if specified flags are supported for the given
+// kernel version. If none of the defined flags are specified
+// then the basic option works on any kernel version.
+func checkFlagsKernelSupport(flags uint, maj, min int) bool {
+	type kernelVersion struct {
+		maj int
+		min int
+	}
+	var flagPerKernelVersion = map[uint]kernelVersion{
+		unix.FAN_ENABLE_AUDIT:     {4, 15},
+		unix.FAN_REPORT_FID:       {5, 1},
+		unix.FAN_REPORT_DIR_FID:   {5, 9},
+		unix.FAN_REPORT_NAME:      {5, 9},
+		unix.FAN_REPORT_DFID_NAME: {5, 9},
+	}
+	check := func(n, k uint, w, x int) (bool, error) {
+		if n&k == k {
+			if maj > w {
+				return true, nil
+			} else if maj == w && min >= x {
+				return true, nil
+			}
+			return false, nil
+		}
+		return false, errors.New("flag not set")
+	}
+	for flag, ver := range flagPerKernelVersion {
+		if v, err := check(flags, flag, ver.maj, ver.min); err != nil {
+			continue // flag not set; check other flags
+		} else {
+			return v
+		}
+	}
+	// if none of these flags were specified then the basic option
+	// works on any kernel version
 	return true
 }
 
@@ -159,6 +193,9 @@ func NewListener(mountpointPath string, maxEvents uint, withName bool) (*Listene
 }
 
 func (l *Listener) Start() {
+	if len(l.watches) == 0 {
+		panic("Nothing to watch. Add Directory/File to the listener to watch")
+	}
 	var fds [1]unix.PollFd
 	fds[0].Fd = int32(l.fd)
 	fds[0].Events = unix.POLLIN
@@ -188,19 +225,17 @@ func (l *Listener) Close() {
 }
 
 func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Listener, error) {
-	if !flagsValid(flags) {
-		return nil, ErrInvalidFlagCombination
-	}
-	if flags&unix.FAN_REPORT_NAME == unix.FAN_REPORT_NAME {
-		if flags&unix.FAN_REPORT_DIR_FID != unix.FAN_REPORT_DIR_FID || flags&unix.FAN_REPORT_FID != unix.FAN_REPORT_FID {
-			return nil, fmt.Errorf("FAN_REPORT_NAME must be specified with FAN_REPORT_DIR_FID or FAN_REPORT_FID: %w", ErrInvalidFlagCombination)
-		}
-	}
-	fd, err := unix.FanotifyInit(flags, eventFlags)
+	maj, min, _, err := kernelVersion()
 	if err != nil {
 		return nil, err
 	}
-	maj, min, _, err := kernelVersion()
+	if err := flagsValid(flags); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFlagCombination, err)
+	}
+	if !checkFlagsKernelSupport(flags, maj, min) {
+		panic("some of the flags specified are not supported on the current kernel")
+	}
+	fd, err := unix.FanotifyInit(flags, eventFlags)
 	if err != nil {
 		return nil, err
 	}
@@ -208,24 +243,13 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 	if err != nil {
 		return nil, fmt.Errorf("error opening mountpoint %s: %w", mountpointPath, err)
 	}
-	var fidType int
-	fidType = FanotifyInitFlagNone
-	if flags&unix.FAN_REPORT_FID == unix.FAN_REPORT_FID {
-		fidType = FanotifyInitFlagFid
-	} else if flags&unix.FAN_REPORT_DIR_FID == unix.FAN_REPORT_DIR_FID {
-		fidType = FanotifyInitFlagDirFid
-	} else if flags&unix.FAN_REPORT_NAME == unix.FAN_REPORT_NAME {
-		fidType = FanotifyInitFlagReportName
-	} else if flags&unix.FAN_REPORT_DFID_NAME == unix.FAN_REPORT_DFID_NAME {
-		fidType = FanotifyInitFlagDirFidName
-	}
 	listener := &Listener{
 		fd:                 fd,
 		flags:              flags,
-		flagFidType:        fidType,
 		mountpoint:         mountpoint,
 		kernelMajorVersion: maj,
 		kernelMinorVersion: min,
+		watches:            make(map[string]bool),
 		Events:             make(chan Event, maxEvents),
 	}
 	return listener, nil
