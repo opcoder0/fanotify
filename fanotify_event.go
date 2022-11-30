@@ -14,14 +14,11 @@ const (
 	sizeOfFanotifyEventMetadata = uint32(unsafe.Sizeof(unix.FanotifyEventMetadata{}))
 )
 
-// CancelFunc function that allows caller to cancel the running listener.
-type CancelFunc func()
-
 var (
-	ErrInvalidListener                  = errors.New("invalid listener")
-	ErrMountFanReportFid                = errors.New("cannot add mountpoint when FAN_REPORT_FID is set")
-	ErrUnsupportedOnKernelVersion       = errors.New("feature unsupported on current kernel version")
-	ErrIncompatibleFanotifyStructFormat = errors.New("structures returned at run time must match the structures at compile time")
+	// ErrNilListener indicates the listener is nil
+	ErrNilListener = errors.New("nil listener")
+	// ErrUnsupportedOnKernelVersion indicates the feature/flag is unavailable for the current kernel version
+	ErrUnsupportedOnKernelVersion = errors.New("feature unsupported on current kernel version")
 )
 
 func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
@@ -33,7 +30,7 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 func (l *Listener) fanotifyMark(path string, flags uint, mask uint64, remove bool) error {
 	skip := true
 	if l == nil {
-		return ErrInvalidListener
+		return ErrNilListener
 	}
 	_, found := l.watches[path]
 	if found {
@@ -98,7 +95,7 @@ func (l *Listener) RemovePath(path string, events uint64) error {
 
 func (l *Listener) RemoveAll() error {
 	if l == nil {
-		return ErrInvalidListener
+		return ErrNilListener
 	}
 	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
 		return err
@@ -108,10 +105,10 @@ func (l *Listener) RemoveAll() error {
 }
 
 func getFileHandle(metadataLen uint16, buf []byte, i int) *unix.FileHandle {
-	var fhSize uint32 // this to uint (this is unsigned int handle_bytes); but go uses uint32
-	var fhType int32  // this to int (this is int handle_type); but go uses int32
+	var fhSize uint32 // this is unsigned int handle_bytes; but Go uses uint32
+	var fhType int32  // this is int handle_type; but Go uses int32
 
-	sizeOfFanotifyEventInfoHeader := uint32(unsafe.Sizeof(FanotifyEventInfoHeader{}))
+	sizeOfFanotifyEventInfoHeader := uint32(unsafe.Sizeof(fanotifyEventInfoHeader{}))
 	sizeOfKernelFSIDType := uint32(unsafe.Sizeof(kernelFSID{}))
 	sizeOfUint32 := uint32(unsafe.Sizeof(fhSize))
 	j := uint32(i) + uint32(metadataLen) + sizeOfFanotifyEventInfoHeader + sizeOfKernelFSIDType
@@ -129,7 +126,7 @@ func getFileHandleWithName(metadataLen uint16, buf []byte, i int) (*unix.FileHan
 	var fname string
 	var nameBytes bytes.Buffer
 
-	sizeOfFanotifyEventInfoHeader := uint32(unsafe.Sizeof(FanotifyEventInfoHeader{}))
+	sizeOfFanotifyEventInfoHeader := uint32(unsafe.Sizeof(fanotifyEventInfoHeader{}))
 	sizeOfKernelFSIDType := uint32(unsafe.Sizeof(kernelFSID{}))
 	sizeOfUint32 := uint32(unsafe.Sizeof(fhSize))
 	j := uint32(i) + uint32(metadataLen) + sizeOfFanotifyEventInfoHeader + sizeOfKernelFSIDType
@@ -153,7 +150,7 @@ func getFileHandleWithName(metadataLen uint16, buf []byte, i int) (*unix.FileHan
 }
 
 func (l *Listener) readEvents() error {
-	var fid *FanotifyEventInfoFID
+	var fid *fanotifyEventInfoFID
 	var metadata *unix.FanotifyEventMetadata
 	var buf [4096 * sizeOfFanotifyEventMetadata]byte
 	var name [unix.PathMax]byte
@@ -175,7 +172,7 @@ func (l *Listener) readEvents() error {
 		metadata = (*unix.FanotifyEventMetadata)(unsafe.Pointer(&buf[i]))
 		for fanotifyEventOK(metadata, n) {
 			if metadata.Vers != unix.FANOTIFY_METADATA_VERSION {
-				return ErrIncompatibleFanotifyStructFormat
+				panic("metadata structure from the kernel does not match the structure definition at compile time")
 			}
 			if metadata.Fd != unix.FAN_NOFD {
 				// no fid
@@ -196,7 +193,7 @@ func (l *Listener) readEvents() error {
 
 			} else {
 				// fid
-				fid = (*FanotifyEventInfoFID)(unsafe.Pointer(&buf[i+int(metadata.Metadata_len)]))
+				fid = (*fanotifyEventInfoFID)(unsafe.Pointer(&buf[i+int(metadata.Metadata_len)]))
 				withName := false
 				switch {
 				case fid.Header.InfoType == unix.FAN_EVENT_INFO_TYPE_FID:

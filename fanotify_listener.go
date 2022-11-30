@@ -24,7 +24,6 @@ var (
 // Event holds the event information for the watched file/directory
 type Event struct {
 	// Fd is the open file descriptor for the file
-	// TODO can this be changed to a Reader instead?
 	Fd int
 	// Path holds the name of the file or the parent directory
 	Path string
@@ -49,7 +48,7 @@ type Listener struct {
 	Events             chan Event
 }
 
-type FanotifyEventInfoHeader struct {
+type fanotifyEventInfoHeader struct {
 	InfoType uint8
 	pad      uint8
 	Len      uint16
@@ -64,8 +63,8 @@ type kernelFSID struct {
 // FAN_EVENT_INFO_TYPE_DFID and FAN_EVENT_INFO_TYPE_DFID_NAME.
 // For FAN_EVENT_INFO_TYPE_DFID_NAME there is additionally a null terminated
 // name immediately after the file handle.
-type FanotifyEventInfoFID struct {
-	Header     FanotifyEventInfoHeader
+type fanotifyEventInfoFID struct {
+	Header     fanotifyEventInfoHeader
 	fsid       kernelFSID
 	fileHandle byte
 }
