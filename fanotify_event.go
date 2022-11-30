@@ -5,8 +5,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"os"
+	"regexp"
+	"strconv"
 	"unsafe"
 
+	"github.com/syndtr/gocapability/capability"
 	"golang.org/x/sys/unix"
 )
 
@@ -14,17 +18,154 @@ const (
 	sizeOfFanotifyEventMetadata = uint32(unsafe.Sizeof(unix.FanotifyEventMetadata{}))
 )
 
-var (
-	// ErrNilListener indicates the listener is nil
-	ErrNilListener = errors.New("nil listener")
-	// ErrUnsupportedOnKernelVersion indicates the feature/flag is unavailable for the current kernel version
-	ErrUnsupportedOnKernelVersion = errors.New("feature unsupported on current kernel version")
-)
+// These fanotify structs are not defined in golang.org/x/sys/unix
+type fanotifyEventInfoHeader struct {
+	InfoType uint8
+	pad      uint8
+	Len      uint16
+}
+
+type kernelFSID struct {
+	val [2]int32
+}
+
+// FanotifyEventInfoFID represents a unique file identifier info record.
+// This structure is used for records of types FAN_EVENT_INFO_TYPE_FID,
+// FAN_EVENT_INFO_TYPE_DFID and FAN_EVENT_INFO_TYPE_DFID_NAME.
+// For FAN_EVENT_INFO_TYPE_DFID_NAME there is additionally a null terminated
+// name immediately after the file handle.
+type fanotifyEventInfoFID struct {
+	Header     fanotifyEventInfoHeader
+	fsid       kernelFSID
+	fileHandle byte
+}
+
+// returns major, minor, patch version of the kernel
+// upon error the string values are empty and the error
+// indicates the reason for failure
+func kernelVersion() (maj, min, patch int, err error) {
+	var sysinfo unix.Utsname
+	err = unix.Uname(&sysinfo)
+	if err != nil {
+		return
+	}
+	re := regexp.MustCompile(`([0-9]+)`)
+	version := re.FindAllString(string(sysinfo.Release[:]), -1)
+	if maj, err = strconv.Atoi(version[0]); err != nil {
+		return
+	}
+	if min, err = strconv.Atoi(version[1]); err != nil {
+		return
+	}
+	if patch, err = strconv.Atoi(version[2]); err != nil {
+		return
+	}
+	return maj, min, patch, nil
+}
+
+// return true if process has CAP_SYS_ADMIN privilege
+// else return false
+func checkCapSysAdmin() (bool, error) {
+	capabilities, err := capability.NewPid2(os.Getpid())
+	if err != nil {
+		return false, err
+	}
+	capabilities.Load()
+	capSysAdmin := capabilities.Get(capability.EFFECTIVE, capability.CAP_SYS_ADMIN)
+	return capSysAdmin, nil
+}
+
+func flagsValid(flags uint) error {
+	isSet := func(n, k uint) bool {
+		return n&k == k
+	}
+	if isSet(flags, unix.FAN_REPORT_FID|unix.FAN_CLASS_CONTENT) {
+		return errors.New("FAN_REPORT_FID cannot be set with FAN_CLASS_CONTENT")
+	}
+	if isSet(flags, unix.FAN_REPORT_FID|unix.FAN_CLASS_PRE_CONTENT) {
+		return errors.New("FAN_REPORT_FID cannot be set with FAN_CLASS_PRE_CONTENT")
+	}
+	if isSet(flags, unix.FAN_REPORT_NAME) {
+		if !isSet(flags, unix.FAN_REPORT_DIR_FID) {
+			return errors.New("FAN_REPORT_NAME must be set with FAN_REPORT_DIR_FID")
+		}
+	}
+	return nil
+}
+
+// Check if specified flags are supported for the given
+// kernel version. If none of the defined flags are specified
+// then the basic option works on any kernel version.
+func checkFlagsKernelSupport(flags uint, maj, min int) bool {
+	type kernelVersion struct {
+		maj int
+		min int
+	}
+	var flagPerKernelVersion = map[uint]kernelVersion{
+		unix.FAN_ENABLE_AUDIT:     {4, 15},
+		unix.FAN_REPORT_FID:       {5, 1},
+		unix.FAN_REPORT_DIR_FID:   {5, 9},
+		unix.FAN_REPORT_NAME:      {5, 9},
+		unix.FAN_REPORT_DFID_NAME: {5, 9},
+	}
+	check := func(n, k uint, w, x int) (bool, error) {
+		if n&k == k {
+			if maj > w {
+				return true, nil
+			} else if maj == w && min >= x {
+				return true, nil
+			}
+			return false, nil
+		}
+		return false, errors.New("flag not set")
+	}
+	for flag, ver := range flagPerKernelVersion {
+		if v, err := check(flags, flag, ver.maj, ver.min); err != nil {
+			continue // flag not set; check other flags
+		} else {
+			return v
+		}
+	}
+	// if none of these flags were specified then the basic option
+	// works on any kernel version
+	return true
+}
 
 func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 	return (n >= int(sizeOfFanotifyEventMetadata) &&
 		meta.Event_len >= sizeOfFanotifyEventMetadata &&
 		int(meta.Event_len) <= n)
+}
+
+func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Listener, error) {
+	maj, min, _, err := kernelVersion()
+	if err != nil {
+		return nil, err
+	}
+	if err := flagsValid(flags); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidFlagCombination, err)
+	}
+	if !checkFlagsKernelSupport(flags, maj, min) {
+		panic("some of the flags specified are not supported on the current kernel")
+	}
+	fd, err := unix.FanotifyInit(flags, eventFlags)
+	if err != nil {
+		return nil, err
+	}
+	mountpoint, err := os.Open(mountpointPath)
+	if err != nil {
+		return nil, fmt.Errorf("error opening mountpoint %s: %w", mountpointPath, err)
+	}
+	listener := &Listener{
+		fd:                 fd,
+		flags:              flags,
+		mountpoint:         mountpoint,
+		kernelMajorVersion: maj,
+		kernelMinorVersion: min,
+		watches:            make(map[string]bool),
+		Events:             make(chan Event, maxEvents),
+	}
+	return listener, nil
 }
 
 func (l *Listener) fanotifyMark(path string, flags uint, mask uint64, remove bool) error {
@@ -49,58 +190,6 @@ func (l *Listener) fanotifyMark(path string, flags uint, mask uint64, remove boo
 			return err
 		}
 	}
-	return nil
-}
-
-func (l *Listener) AddDir(dir string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events, false)
-}
-
-func (l *Listener) RemoveDir(dir string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events, true)
-}
-
-func (l *Listener) AddLink(linkName string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events, false)
-}
-
-func (l *Listener) RemoveLink(linkName string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events, true)
-}
-
-func (l *Listener) AddFilesystem(path string, events uint64) error {
-	if l.kernelMajorVersion < 4 && l.kernelMinorVersion < 20 {
-		return ErrUnsupportedOnKernelVersion
-	}
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_FILESYSTEM
-	return l.fanotifyMark(path, flags, events, false)
-}
-
-func (l *Listener) AddPath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, events, false)
-}
-
-func (l *Listener) RemovePath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_REMOVE, events, true)
-}
-
-func (l *Listener) RemoveAll() error {
-	if l == nil {
-		return ErrNilListener
-	}
-	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
-		return err
-	}
-	l.watches = make(map[string]bool)
 	return nil
 }
 
