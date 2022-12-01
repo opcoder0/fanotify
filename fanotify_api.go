@@ -132,6 +132,8 @@ func (l *Listener) Stop() {
 	if l == nil {
 		return
 	}
+	// stop the listener
+	unix.Write(int(l.stopper.w.Fd()), []byte("stop"))
 	l.mountpoint.Close()
 	l.stopper.r.Close()
 	l.stopper.w.Close()
