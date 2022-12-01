@@ -156,6 +156,18 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 	if err != nil {
 		return nil, fmt.Errorf("error opening mountpoint %s: %w", mountpointPath, err)
 	}
+	r, w, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("cannot create stopper pipe: %v", err)
+	}
+	rfdFlags, err := unix.FcntlInt(r.Fd(), unix.F_GETFL, 0)
+	if err != nil {
+		return nil, fmt.Errorf("stopper error: cannot read fd flags: %v", err)
+	}
+	_, err = unix.FcntlInt(r.Fd(), unix.F_SETFL, rfdFlags|unix.O_NONBLOCK)
+	if err != nil {
+		return nil, fmt.Errorf("stopper error: cannot set fd to non-blocking: %v", err)
+	}
 	listener := &Listener{
 		fd:                 fd,
 		flags:              flags,
@@ -163,7 +175,11 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 		kernelMajorVersion: maj,
 		kernelMinorVersion: min,
 		watches:            make(map[string]bool),
-		Events:             make(chan Event, maxEvents),
+		stopper: struct {
+			r *os.File
+			w *os.File
+		}{r, w},
+		Events: make(chan Event, maxEvents),
 	}
 	return listener, nil
 }
