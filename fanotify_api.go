@@ -4,6 +4,7 @@
 package fanotify
 
 import (
+	"bytes"
 	"errors"
 	"os"
 
@@ -21,6 +22,8 @@ var (
 	ErrUnsupportedOnKernelVersion = errors.New("feature unsupported on current kernel version")
 )
 
+type EventMask uint64
+
 // Event represents a notification from the kernel for the file, directory
 // or a filesystem marked for watching.
 type Event struct {
@@ -33,7 +36,7 @@ type Event struct {
 	// only with kernels 5.9 or higher.
 	FileName string
 	// Mask holds bit mask representing the operation
-	Mask uint64
+	Mask EventMask
 }
 
 // Listener represents a fanotify notification group that holds a list of files,
@@ -198,4 +201,136 @@ func (l *Listener) RemoveAll() error {
 	}
 	l.watches = make(map[string]bool)
 	return nil
+}
+
+// Accessed returns true if the event mask contains file/directory accessed bit
+func (m EventMask) Accessed() bool {
+	return m&FileOrDirAccessedEvent == FileOrDirAccessedEvent
+}
+
+// Modified returns true if the event mask contains a file modified bit
+func (m EventMask) Modified() bool {
+	return m&FileModifiedEvent == FileModifiedEvent
+}
+
+// Closed returns true if the event mask contains a file closed bit
+func (m EventMask) Closed() bool {
+	return m&FileClosedEvent == FileClosedEvent
+}
+
+// Opened returns true if the event mask contains a file/directory opened bit
+func (m EventMask) Opened() bool {
+	return m&FileOrDirOpenedEvent == FileOrDirOpenedEvent
+}
+
+// Execed returns true if the event mask contains a file was opened for exec bit
+func (m EventMask) Execed() bool {
+	return m&FileOpenedForExecEvent == FileOpenedForExecEvent
+}
+
+// AttribChanged returns true if event mask contains a file/directory attribute changed bit
+func (m EventMask) AttribChanged() bool {
+	return m&FileOrDirMetadataChangedEvent == FileOrDirMetadataChangedEvent
+}
+
+// DirOp returns true if the event mask contained directory operation (opendir, readdir, closedir) bit
+func (m EventMask) DirOp() bool {
+	return m&DirectoryEvent == DirectoryEvent
+}
+
+// FileCreated returns true if the event mask contains file was created in marked parent bit
+func (m EventMask) FileCreated() bool {
+	return m&FileCreatedInMarkedParentEvent == FileCreatedInMarkedParentEvent
+}
+
+// DirCreated returns true if event mask contains dir was created in marked parent bit
+func (m EventMask) DirCreated() bool {
+	return m&DirectoryCreatedInMarkedParentEvent == DirectoryCreatedInMarkedParentEvent
+}
+
+// FileDeleted returns true if the event mask contains file was deleted in marked parent bit
+func (m EventMask) FileDeleted() bool {
+	return m&FileDeletedInMarkedParentEvent == FileDeletedInMarkedParentEvent
+}
+
+// DirDeleted returns true if the event mask contains directory was deleted in marked parent bit
+func (m EventMask) DirDeleted() bool {
+	return m&DirectoryDeletedInMarkedParentEvent == DirectoryDeletedInMarkedParentEvent
+}
+
+// FileSelfDeleted returns true if the event mask contains watched file is deleted bit
+func (m EventMask) FileSelfDeleted() bool {
+	return m&MarkedFileDeletedEvent == MarkedFileDeletedEvent
+}
+
+// DirSelfDeleted returns true if the event mask contains watched directory is deleted bit
+func (m EventMask) DirSelfDeleted() bool {
+	return m&MarkedDirectoryDeletedEvent == MarkedDirectoryDeletedEvent
+}
+
+// FileMovedFrom returns true if the event mask contains file moved from marked parent bit
+func (m EventMask) FileMovedFrom() bool {
+	return m&FileMovedFromMarkedParentEvent == FileMovedFromMarkedParentEvent
+}
+
+// DirMovedFrom returns true if the event mask contains directory moved from marked parent bit
+func (m EventMask) DirMovedFrom() bool {
+	return m&DirMovedFromMarkedParentEvent == DirMovedFromMarkedParentEvent
+}
+
+// FileMovedTo returns true if the event mask contains the file moved to marked parent bit
+func (m EventMask) FileMovedTo() bool {
+	return m&FileMovedToMarkedParentEvent == FileMovedToMarkedParentEvent
+}
+
+// DirMovedTo returns true if the event mask contains the directory moved to marked parent bit
+func (m EventMask) DirMovedTo() bool {
+	return m&DirMovedToMarkedParentEvent == DirMovedToMarkedParentEvent
+}
+
+// SelfMoved returns true if the event mask contains the marked file or directory moved bit
+func (m EventMask) SelfMoved() bool {
+	return m&MarkedFileOrDirectoryHasMovedEvent == MarkedFileOrDirectoryHasMovedEvent
+}
+
+// HasMovement returns true if the event mask contains file or directory has moved to/from the marked parent bit
+func (m EventMask) HasMovement() bool {
+	return m&FileOrDirectoryMovedEvent == FileOrDirectoryMovedEvent
+}
+
+func (m EventMask) String() string {
+	masks := map[EventMask]string{
+		FileOrDirAccessedEvent:              "file-or-dir-accessed",
+		FileModifiedEvent:                   "file-modified",
+		FileClosedEvent:                     "file-closed",
+		FileOrDirOpenedEvent:                "file-or-dir-opened",
+		FileOpenedForExecEvent:              "file-opened-for-exec",
+		FileOrDirMetadataChangedEvent:       "file-or-dir-attrib-changed",
+		DirectoryEvent:                      "dir-opened-read-or-closed",
+		FileCreatedInMarkedParentEvent:      "file-created",
+		DirectoryCreatedInMarkedParentEvent: "dir-created",
+		FileDeletedInMarkedParentEvent:      "file-deleted",
+		DirectoryDeletedInMarkedParentEvent: "dir-deleted",
+		MarkedFileDeletedEvent:              "marked-file-deleted",
+		MarkedDirectoryDeletedEvent:         "marked-dir-deleted",
+		FileMovedFromMarkedParentEvent:      "file-moved-from",
+		DirMovedFromMarkedParentEvent:       "dir-moved-from",
+		FileMovedToMarkedParentEvent:        "file-moved-to",
+		DirMovedToMarkedParentEvent:         "dir-moved-to",
+		MarkedFileOrDirectoryHasMovedEvent:  "marked-file-or-dir-moved",
+		QueueOverflowedEvent:                "kernel-queue-overflowed",
+		FileOrDirectoryMovedEvent:           "file-or-dir-moved",
+	}
+	var s bytes.Buffer
+	for flag, str := range masks {
+		if m&flag == flag {
+			s.WriteString(str)
+			s.WriteString(",")
+		}
+	}
+	if s.Len() > 0 {
+		// strip the last comma
+		s.Truncate(s.Len() - 1)
+	}
+	return s.String()
 }
