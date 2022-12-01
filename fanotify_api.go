@@ -215,7 +215,7 @@ func (m EventMask) Modified() bool {
 
 // Closed returns true if the event mask contains a file closed bit
 func (m EventMask) Closed() bool {
-	return m&FileClosedEvent == FileClosedEvent
+	return m&unix.FAN_CLOSE_WRITE == unix.FAN_CLOSE_WRITE || m&unix.FAN_CLOSE_NOWRITE == unix.FAN_CLOSE_NOWRITE
 }
 
 // Opened returns true if the event mask contains a file/directory opened bit
@@ -240,22 +240,22 @@ func (m EventMask) DirOp() bool {
 
 // FileCreated returns true if the event mask contains file was created in marked parent bit
 func (m EventMask) FileCreated() bool {
-	return m&FileCreatedInMarkedParentEvent == FileCreatedInMarkedParentEvent
+	return m&unix.FAN_CREATE == unix.FAN_CREATE
 }
 
 // DirCreated returns true if event mask contains dir was created in marked parent bit
 func (m EventMask) DirCreated() bool {
-	return m&DirectoryCreatedInMarkedParentEvent == DirectoryCreatedInMarkedParentEvent
+	return m&unix.FAN_CREATE == unix.FAN_CREATE || m&unix.FAN_ONDIR == unix.FAN_ONDIR
 }
 
 // FileDeleted returns true if the event mask contains file was deleted in marked parent bit
 func (m EventMask) FileDeleted() bool {
-	return m&FileDeletedInMarkedParentEvent == FileDeletedInMarkedParentEvent
+	return m&unix.FAN_DELETE == unix.FAN_DELETE
 }
 
 // DirDeleted returns true if the event mask contains directory was deleted in marked parent bit
 func (m EventMask) DirDeleted() bool {
-	return m&DirectoryDeletedInMarkedParentEvent == DirectoryDeletedInMarkedParentEvent
+	return m&unix.FAN_DELETE == unix.FAN_DELETE || m&unix.FAN_ONDIR == unix.FAN_ONDIR
 }
 
 // FileSelfDeleted returns true if the event mask contains watched file is deleted bit
@@ -265,27 +265,27 @@ func (m EventMask) FileSelfDeleted() bool {
 
 // DirSelfDeleted returns true if the event mask contains watched directory is deleted bit
 func (m EventMask) DirSelfDeleted() bool {
-	return m&MarkedDirectoryDeletedEvent == MarkedDirectoryDeletedEvent
+	return m&unix.FAN_DELETE_SELF == unix.FAN_DELETE_SELF || m&unix.FAN_ONDIR == unix.FAN_ONDIR
 }
 
 // FileMovedFrom returns true if the event mask contains file moved from marked parent bit
 func (m EventMask) FileMovedFrom() bool {
-	return m&FileMovedFromMarkedParentEvent == FileMovedFromMarkedParentEvent
+	return m&unix.FAN_MOVED_FROM == unix.FAN_MOVED_FROM
 }
 
 // DirMovedFrom returns true if the event mask contains directory moved from marked parent bit
 func (m EventMask) DirMovedFrom() bool {
-	return m&DirMovedFromMarkedParentEvent == DirMovedFromMarkedParentEvent
+	return m&unix.FAN_MOVED_FROM == unix.FAN_MOVED_FROM || m&unix.FAN_ONDIR == unix.FAN_ONDIR
 }
 
 // FileMovedTo returns true if the event mask contains the file moved to marked parent bit
 func (m EventMask) FileMovedTo() bool {
-	return m&FileMovedToMarkedParentEvent == FileMovedToMarkedParentEvent
+	return m&unix.FAN_MOVED_TO == unix.FAN_MOVED_TO
 }
 
 // DirMovedTo returns true if the event mask contains the directory moved to marked parent bit
 func (m EventMask) DirMovedTo() bool {
-	return m&DirMovedToMarkedParentEvent == DirMovedToMarkedParentEvent
+	return m&unix.FAN_MOVED_TO == unix.FAN_MOVED_TO || m&unix.FAN_ONDIR == unix.FAN_ONDIR
 }
 
 // SelfMoved returns true if the event mask contains the marked file or directory moved bit
