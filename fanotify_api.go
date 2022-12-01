@@ -117,13 +117,17 @@ func (l *Listener) Start() {
 				return
 			}
 		}
-		// if there is data on the stopper terminate the listener/goroutine
-		var p []byte
-		_, err = unix.Read(int(fds[1].Fd), p)
-		if err == nil {
-			return
+		if fds[1].Revents != 0 {
+			if fds[1].Revents&unix.POLLIN == unix.POLLIN {
+				// found data on the stopper
+				return
+			}
 		}
-		l.readEvents() // blocks when the channel bufferred is full
+		if fds[0].Revents != 0 {
+			if fds[0].Revents&unix.POLLIN == unix.POLLIN {
+				l.readEvents() // blocks when the channel bufferred is full
+			}
+		}
 	}
 }
 
