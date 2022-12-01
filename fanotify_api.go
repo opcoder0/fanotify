@@ -6,7 +6,9 @@ package fanotify
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
+	"strconv"
 
 	"golang.org/x/sys/unix"
 )
@@ -324,9 +326,12 @@ func (m EventMask) String() string {
 	var s bytes.Buffer
 	for flag, str := range masks {
 		if m&flag == flag {
-			s.WriteString(str)
+			s.WriteString(fmt.Sprintf("%s(0x%x)", str, flag))
 			s.WriteString(",")
 		}
+	}
+	if s.Len() == 0 {
+		return strconv.FormatUint(uint64(m), 16)
 	}
 	if s.Len() > 0 {
 		// strip the last comma
