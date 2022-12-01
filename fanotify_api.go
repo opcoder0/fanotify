@@ -48,6 +48,10 @@ type Listener struct {
 	kernelMajorVersion int
 	kernelMinorVersion int
 	watches            map[string]bool
+	stopper            struct {
+		r *os.File
+		w *os.File
+	}
 	// Events a buffered channel holding fanotify notifications for the watched file/directory.
 	Events chan Event
 }
@@ -93,9 +97,13 @@ func (l *Listener) Start() {
 	if len(l.watches) == 0 {
 		panic("Nothing to watch. Add Directory/File to the listener to watch")
 	}
-	var fds [1]unix.PollFd
+	var fds [2]unix.PollFd
+	// Fanotify Fd
 	fds[0].Fd = int32(l.fd)
 	fds[0].Events = unix.POLLIN
+	// Stopper/Cancellation Fd
+	fds[1].Fd = int32(l.stopper.r.Fd())
+	fds[1].Events = unix.POLLIN
 	for {
 		n, err := unix.Poll(fds[:], -1)
 		if n == 0 {
@@ -109,16 +117,30 @@ func (l *Listener) Start() {
 				return
 			}
 		}
-		l.readEvents() // blocks when the channel bufferred is full
+		if fds[1].Revents != 0 {
+			if fds[1].Revents&unix.POLLIN == unix.POLLIN {
+				// found data on the stopper
+				return
+			}
+		}
+		if fds[0].Revents != 0 {
+			if fds[0].Revents&unix.POLLIN == unix.POLLIN {
+				l.readEvents() // blocks when the channel bufferred is full
+			}
+		}
 	}
 }
 
-// Close closes the notification group and the events channel
-func (l *Listener) Close() {
+// Stop stops the listener and closes the notification group and the events channel
+func (l *Listener) Stop() {
 	if l == nil {
 		return
 	}
+	// stop the listener
+	unix.Write(int(l.stopper.w.Fd()), []byte("stop"))
 	l.mountpoint.Close()
+	l.stopper.r.Close()
+	l.stopper.w.Close()
 	close(l.Events)
 }
 
