@@ -144,12 +144,13 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
+// not working
 func (l *Listener) WatchFileOrDirAccessed(dir string) error {
-	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_ACCESS, false)
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_ACCESS|unix.FAN_EVENT_ON_CHILD, false)
 }
 
 func (l *Listener) WatchFileModified(dir string) error {
-	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_MODIFY, false)
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_MODIFY|unix.FAN_EVENT_ON_CHILD, false)
 }
 
 // // AddDir adds the specified directory to listener's watch
