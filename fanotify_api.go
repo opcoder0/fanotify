@@ -21,6 +21,9 @@ var (
 	ErrUnsupportedOnKernelVersion = errors.New("feature unsupported on current kernel version")
 )
 
+// Action represents an event / operation on a particular file/directory
+type Action uint64
+
 // Event represents a notification from the kernel for the file, directory
 // or a filesystem marked for watching.
 type Event struct {
@@ -33,7 +36,9 @@ type Event struct {
 	// only with kernels 5.9 or higher.
 	FileName string
 	// Mask holds bit mask representing the operation
-	Mask uint64
+	Mask Action
+	// Pid Process ID of the process that caused the event
+	Pid int32
 }
 
 // Listener represents a fanotify notification group that holds a list of files,
@@ -144,52 +149,23 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// AddDir adds the specified directory to listener's watch
-// list. If `dir` is not a directory then an error is returned.
-// If `dir` is a symbolic link the link is followed.
-func (l *Listener) AddDir(dir string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events, false)
+// AddWatch watches parent directory for specified actions
+func (l *Listener) AddWatch(parentDir string, action Action) error {
+	return l.fanotifyMark(parentDir, unix.FAN_MARK_ADD, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
 }
 
-// RemoveDir removes the specified directory from the listener's
-// watch list.
-func (l *Listener) RemoveDir(dir string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events, true)
+// DeleteWatch stops watching the parent directory for the specified action
+func (l *Listener) DeleteWatch(parentDir string, action Action) error {
+	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
 }
 
-// AddLink adds the specified symbolic link to the listener's watch list. The link
-// is not followed. The link itself is marked for watching.
-func (l *Listener) AddLink(linkName string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events, false)
+// WatchMountPoint watches the entire mount point for specified actions
+func (l *Listener) WatchMountPoint(action Action) error {
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(action), false)
 }
 
-// RemoveLink removes the specified symbolic link from the listener's watch list.
-func (l *Listener) RemoveLink(linkName string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events, true)
-}
-
-// AddPath adds the specified path name (file or directory) to the listener's
-// watch list.
-func (l *Listener) AddPath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, events, false)
-}
-
-// RemovePath removes the specified path name (file or directory) from the
-// listener's watch list.
-func (l *Listener) RemovePath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_REMOVE, events, true)
-}
-
-// RemoveAll removes all the watch elements from the listener.
-func (l *Listener) RemoveAll() error {
+// ClearWatch stops watching for all actions
+func (l *Listener) ClearWatch() error {
 	if l == nil {
 		return ErrNilListener
 	}
