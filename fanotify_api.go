@@ -144,58 +144,66 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// AddDir adds the specified directory to listener's watch
-// list. If `dir` is not a directory then an error is returned.
-// If `dir` is a symbolic link the link is followed.
-func (l *Listener) AddDir(dir string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events, false)
+func (l *Listener) WatchFileOrDirAccessed(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD|unix.FAN_MARK_ONLYDIR, unix.FAN_ACCESS, false)
 }
 
-// RemoveDir removes the specified directory from the listener's
-// watch list.
-func (l *Listener) RemoveDir(dir string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_ONLYDIR
-	return l.fanotifyMark(dir, flags, events, true)
+func (l *Listener) WatchFileModified(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD|unix.FAN_MARK_ONLYDIR, unix.FAN_MODIFY, false)
 }
 
-// AddLink adds the specified symbolic link to the listener's watch list. The link
-// is not followed. The link itself is marked for watching.
-func (l *Listener) AddLink(linkName string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events, false)
-}
-
-// RemoveLink removes the specified symbolic link from the listener's watch list.
-func (l *Listener) RemoveLink(linkName string, events uint64) error {
-	var flags uint
-	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_DONT_FOLLOW
-	return l.fanotifyMark(linkName, flags, events, true)
-}
-
-// AddPath adds the specified path name (file or directory) to the listener's
-// watch list.
-func (l *Listener) AddPath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, events, false)
-}
-
-// RemovePath removes the specified path name (file or directory) from the
-// listener's watch list.
-func (l *Listener) RemovePath(path string, events uint64) error {
-	return l.fanotifyMark(path, unix.FAN_MARK_REMOVE, events, true)
-}
-
-// RemoveAll removes all the watch elements from the listener.
-func (l *Listener) RemoveAll() error {
-	if l == nil {
-		return ErrNilListener
-	}
-	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
-		return err
-	}
-	l.watches = make(map[string]bool)
-	return nil
-}
+// // AddDir adds the specified directory to listener's watch
+// // list. If `dir` is not a directory then an error is returned.
+// // If `dir` is a symbolic link the link is followed.
+// func (l *Listener) AddDir(dir string, events uint64) error {
+// 	var flags uint
+// 	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_ONLYDIR
+// 	return l.fanotifyMark(dir, flags, events, false)
+// }
+//
+// // RemoveDir removes the specified directory from the listener's
+// // watch list.
+// func (l *Listener) RemoveDir(dir string, events uint64) error {
+// 	var flags uint
+// 	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_ONLYDIR
+// 	return l.fanotifyMark(dir, flags, events, true)
+// }
+//
+// // AddLink adds the specified symbolic link to the listener's watch list. The link
+// // is not followed. The link itself is marked for watching.
+// func (l *Listener) AddLink(linkName string, events uint64) error {
+// 	var flags uint
+// 	flags = unix.FAN_MARK_ADD | unix.FAN_MARK_DONT_FOLLOW
+// 	return l.fanotifyMark(linkName, flags, events, false)
+// }
+//
+// // RemoveLink removes the specified symbolic link from the listener's watch list.
+// func (l *Listener) RemoveLink(linkName string, events uint64) error {
+// 	var flags uint
+// 	flags = unix.FAN_MARK_REMOVE | unix.FAN_MARK_DONT_FOLLOW
+// 	return l.fanotifyMark(linkName, flags, events, true)
+// }
+//
+// // AddPath adds the specified path name (file or directory) to the listener's
+// // watch list.
+// func (l *Listener) AddPath(path string, events uint64) error {
+// 	return l.fanotifyMark(path, unix.FAN_MARK_ADD, events, false)
+// }
+//
+// // RemovePath removes the specified path name (file or directory) from the
+// // listener's watch list.
+// func (l *Listener) RemovePath(path string, events uint64) error {
+// 	return l.fanotifyMark(path, unix.FAN_MARK_REMOVE, events, true)
+// }
+//
+// // RemoveAll removes all the watch elements from the listener.
+// func (l *Listener) RemoveAll() error {
+// 	if l == nil {
+// 		return ErrNilListener
+// 	}
+// 	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
+// 		return err
+// 	}
+// 	l.watches = make(map[string]bool)
+// 	return nil
+// }
