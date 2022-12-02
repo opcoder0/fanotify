@@ -93,14 +93,29 @@ func flagsValid(flags uint) error {
 	return nil
 }
 
-// Check if specified flags are supported for the given
+func fanotifyMarkMaskValid(mask uint64) error {
+	isSet := func(n, k uint64) bool {
+		return n&k == k
+	}
+	if isSet(mask, unix.FAN_MARK_MOUNT) && (isSet(mask, unix.FAN_CREATE) || isSet(mask, unix.FAN_ATTRIB) || isSet(mask, unix.FAN_MOVE) || isSet(mask, unix.FAN_DELETE_SELF)) {
+		return errors.New("mountpoint cannot be watched for create, attrib, move or delete self actions")
+	}
+	return nil
+}
+
+func markFlagsValid(flags uint64) bool {
+	return false
+}
+
+// Check if specified fanotify_init flags are supported for the given
 // kernel version. If none of the defined flags are specified
 // then the basic option works on any kernel version.
-func checkFlagsKernelSupport(flags uint, maj, min int) bool {
+func fanotifyInitFlagsKernelSupport(flags uint, maj, min int) bool {
 	type kernelVersion struct {
 		maj int
 		min int
 	}
+	// fanotify init flags
 	var flagPerKernelVersion = map[uint]kernelVersion{
 		unix.FAN_ENABLE_AUDIT:     {4, 15},
 		unix.FAN_REPORT_FID:       {5, 1},
@@ -108,6 +123,7 @@ func checkFlagsKernelSupport(flags uint, maj, min int) bool {
 		unix.FAN_REPORT_NAME:      {5, 9},
 		unix.FAN_REPORT_DFID_NAME: {5, 9},
 	}
+
 	check := func(n, k uint, w, x int) (bool, error) {
 		if n&k == k {
 			if maj > w {
@@ -120,6 +136,48 @@ func checkFlagsKernelSupport(flags uint, maj, min int) bool {
 		return false, errors.New("flag not set")
 	}
 	for flag, ver := range flagPerKernelVersion {
+		if v, err := check(flags, flag, ver.maj, ver.min); err != nil {
+			continue // flag not set; check other flags
+		} else {
+			return v
+		}
+	}
+	// if none of these flags were specified then the basic option
+	// works on any kernel version
+	return true
+}
+
+// Check if specified fanotify_mark flags are supported for the given
+// kernel version. If none of the defined flags are specified
+// then the basic option works on any kernel version.
+func fanotifyMarkFlagsKernelSupport(flags uint64, maj, min int) bool {
+	type kernelVersion struct {
+		maj int
+		min int
+	}
+	// fanotify mark flags
+	var fanotifyMarkFlags = map[uint64]kernelVersion{
+		unix.FAN_OPEN_EXEC:   {5, 0},
+		unix.FAN_ATTRIB:      {5, 1},
+		unix.FAN_CREATE:      {5, 1},
+		unix.FAN_DELETE:      {5, 1},
+		unix.FAN_DELETE_SELF: {5, 1},
+		unix.FAN_MOVED_FROM:  {5, 1},
+		unix.FAN_MOVED_TO:    {5, 1},
+	}
+
+	check := func(n, k uint64, w, x int) (bool, error) {
+		if n&k == k {
+			if maj > w {
+				return true, nil
+			} else if maj == w && min >= x {
+				return true, nil
+			}
+			return false, nil
+		}
+		return false, errors.New("flag not set")
+	}
+	for flag, ver := range fanotifyMarkFlags {
 		if v, err := check(flags, flag, ver.maj, ver.min); err != nil {
 			continue // flag not set; check other flags
 		} else {
@@ -145,8 +203,8 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 	if err := flagsValid(flags); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidFlagCombination, err)
 	}
-	if !checkFlagsKernelSupport(flags, maj, min) {
-		panic("some of the flags specified are not supported on the current kernel")
+	if !fanotifyInitFlagsKernelSupport(flags, maj, min) {
+		panic("some of the flags specified are not supported on the current kernel; refer to the documentation")
 	}
 	fd, err := unix.FanotifyInit(flags, eventFlags)
 	if err != nil {
@@ -188,6 +246,12 @@ func (l *Listener) fanotifyMark(path string, flags uint, mask uint64, remove boo
 	skip := true
 	if l == nil {
 		return ErrNilListener
+	}
+	if !fanotifyMarkFlagsKernelSupport(mask, l.kernelMajorVersion, l.kernelMinorVersion) {
+		panic("some of the mark mask combinations specified are not supported on the current kernel; refer to the documentation")
+	}
+	if err := fanotifyMarkMaskValid(mask); err != nil {
+		return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
 	}
 	_, found := l.watches[path]
 	if found {
@@ -293,6 +357,7 @@ func (l *Listener) readEvents() error {
 					Fd:   int(metadata.Fd),
 					Path: string(name[:n1]),
 					Mask: Action(metadata.Mask),
+					Pid:  metadata.Pid,
 				}
 				l.Events <- event
 
@@ -335,6 +400,7 @@ func (l *Listener) readEvents() error {
 					Path:     pathName,
 					FileName: fileName,
 					Mask:     Action(metadata.Mask),
+					Pid:      metadata.Pid,
 				}
 				l.Events <- event
 				i += int(metadata.Event_len)

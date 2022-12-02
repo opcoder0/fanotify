@@ -37,6 +37,8 @@ type Event struct {
 	FileName string
 	// Mask holds bit mask representing the operation
 	Mask Action
+	// Pid Process ID of the process that caused the event
+	Pid int32
 }
 
 // Listener represents a fanotify notification group that holds a list of files,
@@ -147,18 +149,23 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// Watch watches parent directory for events
-func (l *Listener) Watch(parentDir string, action Action) error {
+// AddWatch watches parent directory for specified actions
+func (l *Listener) AddWatch(parentDir string, action Action) error {
 	return l.fanotifyMark(parentDir, unix.FAN_MARK_ADD, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
 }
 
-// DeleteWatch deletes the specified watch
+// DeleteWatch stops watching the parent directory for the specified action
 func (l *Listener) DeleteWatch(parentDir string, action Action) error {
 	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
 }
 
-// DeleteAllWatches removes all the watch elements from the listener.
-func (l *Listener) DeleteAllWatches() error {
+// WatchMountPoint watches the entire mount point for specified actions
+func (l *Listener) WatchMountPoint(action Action) error {
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(action), false)
+}
+
+// ClearWatch stops watching for all actions
+func (l *Listener) ClearWatch() error {
 	if l == nil {
 		return ErrNilListener
 	}
