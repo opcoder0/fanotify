@@ -144,13 +144,40 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// not working
 func (l *Listener) WatchFileOrDirAccessed(dir string) error {
-	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_ACCESS|unix.FAN_EVENT_ON_CHILD, false)
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileOrDirAccessedEvent|unix.FAN_EVENT_ON_CHILD, false)
 }
 
 func (l *Listener) WatchFileModified(dir string) error {
-	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_MODIFY|unix.FAN_EVENT_ON_CHILD, false)
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileModifiedEvent|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchFileClosed(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_CLOSE_WRITE|unix.FAN_CLOSE_NOWRITE|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchFileOrDirOpened(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileOrDirOpenedEvent|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchFileCreated(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileCreatedInMarkedParentEvent|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchFileOrDirCreated(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileCreatedInMarkedParentEvent|unix.FAN_ONDIR|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchFileDeleted(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileDeletedInMarkedParentEvent|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchFileOrDirDeleted(dir string) error {
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, FileDeletedInMarkedParentEvent|unix.FAN_ONDIR|unix.FAN_EVENT_ON_CHILD, false)
+}
+
+func (l *Listener) WatchSelfDelete(path string) error {
+	return l.fanotifyMark(path, unix.FAN_MARK_ADD, MarkedFileDeletedEvent|unix.FAN_EVENT_ON_CHILD, false)
 }
 
 // // AddDir adds the specified directory to listener's watch

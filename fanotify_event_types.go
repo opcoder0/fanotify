@@ -15,14 +15,10 @@ const (
 	FileOpenedForExecEvent uint64 = unix.FAN_OPEN_EXEC
 	// FileOrDirMetadataChangedEvent create an event when a file or directory attributes have changed.
 	FileOrDirMetadataChangedEvent uint64 = unix.FAN_ATTRIB
-	// DirectoryEvent create an event when directory is opened, read or closed.
-	DirectoryEvent uint64 = unix.FAN_ONDIR
 	// FileCreatedInMarkedParentEvent create event when a file is created under a marked parent directory.
-	FileCreatedInMarkedParentEvent uint64 = unix.FAN_CREATE | unix.FAN_EVENT_ON_CHILD
-	// DirectoryCreatedInMarkedParentEvent create event when a directory is created under a marked parent directory.
-	DirectoryCreatedInMarkedParentEvent uint64 = unix.FAN_ONDIR | unix.FAN_CREATE | unix.FAN_EVENT_ON_CHILD
+	FileCreatedInMarkedParentEvent uint64 = unix.FAN_CREATE
 	// FileDeletedInMarkedParentEvent create event when a file is deleted under a marked parent directory.
-	FileDeletedInMarkedParentEvent uint64 = unix.FAN_DELETE | unix.FAN_EVENT_ON_CHILD
+	FileDeletedInMarkedParentEvent uint64 = unix.FAN_DELETE
 	// DirectoryDeletedInMarkedParentEvent create event when a directory is deleted under a marked parent directory.
 	DirectoryDeletedInMarkedParentEvent uint64 = unix.FAN_ONDIR | unix.FAN_DELETE | unix.FAN_EVENT_ON_CHILD
 	// MarkedFileDeletedEvent create event when a marked file is deleted.
