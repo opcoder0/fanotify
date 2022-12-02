@@ -145,11 +145,11 @@ func (l *Listener) Stop() {
 }
 
 func (l *Listener) WatchFileOrDirAccessed(dir string) error {
-	return l.fanotifyMark(dir, unix.FAN_MARK_ADD|unix.FAN_MARK_ONLYDIR, unix.FAN_ACCESS, false)
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_ACCESS, false)
 }
 
 func (l *Listener) WatchFileModified(dir string) error {
-	return l.fanotifyMark(dir, unix.FAN_MARK_ADD|unix.FAN_MARK_ONLYDIR, unix.FAN_MODIFY, false)
+	return l.fanotifyMark(dir, unix.FAN_MARK_ADD, unix.FAN_MODIFY, false)
 }
 
 // // AddDir adds the specified directory to listener's watch
