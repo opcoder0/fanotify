@@ -81,7 +81,7 @@ func TestFanotifyFileAccessed(t *testing.T) {
 	case <-time.After(1 * time.Second):
 		t.Error("Timeout Error: FileOrDirectoryAccessed event not received")
 	case event := <-l.Events:
-		assert.Equal(t, event.Path, testFile)
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
 		hasFileAccessed := (event.Mask & FileAccessed) == FileAccessed
 		assert.True(t, hasFileAccessed)

@@ -361,7 +361,7 @@ func (l *Listener) readEvents() error {
 					Fd:   int(metadata.Fd),
 					Path: string(name[:n1]),
 					Mask: Action(mask),
-					Pid:  metadata.Pid,
+					Pid:  int(metadata.Pid),
 				}
 				l.Events <- event
 
@@ -408,7 +408,7 @@ func (l *Listener) readEvents() error {
 					Path:     pathName,
 					FileName: fileName,
 					Mask:     Action(mask),
-					Pid:      metadata.Pid,
+					Pid:      int(metadata.Pid),
 				}
 				l.Events <- event
 				i += int(metadata.Event_len)
