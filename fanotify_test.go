@@ -104,17 +104,17 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
+
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileModified
-	l.AddWatch(watchDir, action)
-	go l.Start()
-	defer l.Stop()
-	// generate event
 	data := []byte("test data...")
 	testFile := fmt.Sprintf("%s/test.dat", watchDir)
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test file created %s", testFile)
+	action := FileModified
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
 	pid, err := modifyFile(testFile)
 	assert.Nil(t, err)
 	select {
