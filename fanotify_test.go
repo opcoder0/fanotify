@@ -60,7 +60,7 @@ func catFile(filename string) (int, error) {
 }
 
 func modifyFile(filename string) (int, error) {
-	cmd := exec.Command("sed", "-i", "s/\\(.*\\)/\\U\\1/", filename)
+	cmd := exec.Command("touch", "-m", filename)
 	err := cmd.Run()
 	if err != nil {
 		return 0, err
