@@ -59,7 +59,17 @@ func catFile(filename string) (int, error) {
 	return cmd.Process.Pid, nil
 }
 
-func TestFanotifyFileAccessed(t *testing.T) {
+func modifyFile(filename string) (int, error) {
+	cmd := exec.Command("sed", "-i", "s/\\(.*\\)/\\U\\1/", filename)
+	err := cmd.Run()
+	if err != nil {
+		return 0, err
+	}
+	return cmd.Process.Pid, nil
+}
+
+// TestWithCapSysAdmFanotifyFileAccessed requires CAP_SYS_ADM privilege.
+func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	l, err := NewListener("/", 4096, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
@@ -78,12 +88,42 @@ func TestFanotifyFileAccessed(t *testing.T) {
 	pid, err := catFile(testFile)
 	assert.Nil(t, err)
 	select {
-	case <-time.After(1 * time.Second):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("Timeout Error: FileOrDirectoryAccessed event not received")
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
 		hasFileAccessed := (event.Mask & FileAccessed) == FileAccessed
 		assert.True(t, hasFileAccessed)
+	}
+}
+
+// TestWithCapSysAdmFanotifyFileModified requires CAP_SYS_ADM privilege.
+func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+	t.Logf("Watch Directory: %s", watchDir)
+	action := FileModified
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	// generate event
+	data := []byte("test data...")
+	testFile := fmt.Sprintf("%s/test.dat", watchDir)
+	err = os.WriteFile(testFile, data, 0666)
+	assert.Nil(t, err)
+	t.Logf("Test file created %s", testFile)
+	pid, err := modifyFile(testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOrDirectoryAccessed event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		isModifed := (event.Mask & FileModified) == FileModified
+		assert.True(t, isModifed)
 	}
 }
