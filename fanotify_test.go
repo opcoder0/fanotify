@@ -119,7 +119,7 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	assert.Nil(t, err)
 	select {
 	case <-time.After(100 * time.Millisecond):
-		t.Error("Timeout Error: FileOrDirectoryAccessed event not received")
+		t.Error("Timeout Error: FileModified event not received")
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
