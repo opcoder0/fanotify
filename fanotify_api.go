@@ -38,7 +38,7 @@ type Event struct {
 	// Mask holds bit mask representing the operation
 	Mask Action
 	// Pid Process ID of the process that caused the event
-	Pid int32
+	Pid int
 }
 
 // Listener represents a fanotify notification group that holds a list of files,
