@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -49,17 +50,19 @@ func TestNewListenerValidFlags(t *testing.T) {
 // 	assert.Nil(t, err)
 // }
 
+func catFile(filename string) (int, error) {
+	cmd := exec.Command("cat", filename)
+	err := cmd.Run()
+	if err != nil {
+		return 0, err
+	}
+	return cmd.Process.Pid, nil
+}
+
 func TestFanotifyFileAccessed(t *testing.T) {
-
-	var flags uint
-	var eventFlags uint
-
-	flags = unix.FAN_CLASS_NOTIF | unix.FAN_REPORT_FID
-	eventFlags = unix.O_RDONLY | unix.O_LARGEFILE | unix.O_CLOEXEC
-	l, err := newListener("/", flags, eventFlags, 4096)
+	l, err := NewListener("/", 4096, true)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
-
 	watchDir := t.TempDir()
 	t.Logf("Watch Directory: %s", watchDir)
 	action := FileOrDirectoryAccessed
@@ -72,16 +75,15 @@ func TestFanotifyFileAccessed(t *testing.T) {
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test file created %s", testFile)
-	f, err := os.Open(testFile)
+	pid, err := catFile(testFile)
 	assert.Nil(t, err)
-	f.Close()
 	select {
 	case <-time.After(1 * time.Second):
 		t.Error("Timeout Error: FileOrDirectoryAccessed event not received")
 	case event := <-l.Events:
 		assert.Equal(t, event.Path, testFile)
-		assert.Equal(t, event.Pid, os.Getpid())
-		hasFileAccessed := (event.Mask & FileOrDirectoryAccessed) == FileOrDirectoryAccessed
+		assert.Equal(t, event.Pid, pid)
+		hasFileAccessed := (event.Mask & FileAccessed) == FileAccessed
 		assert.True(t, hasFileAccessed)
 	}
 }

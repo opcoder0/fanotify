@@ -353,10 +353,14 @@ func (l *Listener) readEvents() error {
 					metadata = (*unix.FanotifyEventMetadata)(unsafe.Pointer(&buf[i]))
 					continue
 				}
+				mask := metadata.Mask
+				if mask&unix.FAN_ONDIR == unix.FAN_ONDIR {
+					mask = mask ^ unix.FAN_ONDIR
+				}
 				event := Event{
 					Fd:   int(metadata.Fd),
 					Path: string(name[:n1]),
-					Mask: Action(metadata.Mask),
+					Mask: Action(mask),
 					Pid:  metadata.Pid,
 				}
 				l.Events <- event
@@ -395,11 +399,15 @@ func (l *Listener) readEvents() error {
 				fdPath := fmt.Sprintf("/proc/self/fd/%d", fd)
 				n1, _ := unix.Readlink(fdPath, name[:]) // TODO handle err case
 				pathName := string(name[:n1])
+				mask := metadata.Mask
+				if mask&unix.FAN_ONDIR == unix.FAN_ONDIR {
+					mask = mask ^ unix.FAN_ONDIR
+				}
 				event := Event{
 					Fd:       fd,
 					Path:     pathName,
 					FileName: fileName,
-					Mask:     Action(metadata.Mask),
+					Mask:     Action(mask),
 					Pid:      metadata.Pid,
 				}
 				l.Events <- event
