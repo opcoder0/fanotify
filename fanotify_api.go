@@ -175,3 +175,8 @@ func (l *Listener) ClearWatch() error {
 	l.watches = make(map[string]bool)
 	return nil
 }
+
+// Has returns true if actions contains the passed in action (a).
+func (actions Action) Has(a Action) bool {
+	return actions&a == a
+}

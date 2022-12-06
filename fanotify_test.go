@@ -90,8 +90,7 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		hasFileAccessed := (event.Actions & FileAccessed) == FileAccessed
-		assert.True(t, hasFileAccessed)
+		assert.True(t, event.Actions.Has(FileAccessed))
 	}
 }
 
@@ -119,8 +118,7 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		isModifed := (event.Actions & FileModified) == FileModified
-		assert.True(t, isModifed)
+		assert.True(t, event.Actions.Has(FileModified))
 	}
 }
 
@@ -148,8 +146,7 @@ func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		closeNoWrite := (event.Actions & FileClosedWithNoWrite) == FileClosedWithNoWrite
-		assert.True(t, closeNoWrite)
+		assert.True(t, event.Actions.Has(FileClosedWithNoWrite))
 	}
 }
 
@@ -177,8 +174,7 @@ func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		opened := (event.Actions & FileOpened) == FileOpened
-		assert.True(t, opened)
+		assert.True(t, event.Actions.Has(FileOpened))
 	}
 }
 
@@ -202,8 +198,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), fmt.Sprintf("%s/%s", watchDir, "."))
 		assert.Equal(t, event.Pid, pid)
-		opened := (event.Actions & FileOpened) == FileOpened
-		assert.True(t, opened)
+		assert.True(t, event.Actions.Has(FileOpened))
 	}
 }
 
@@ -236,8 +231,7 @@ exit 0
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		openedForExec := (event.Actions & FileOpenedForExec) == FileOpenedForExec
-		assert.True(t, openedForExec)
+		assert.True(t, event.Actions.Has(FileOpenedForExec))
 	}
 }
 
@@ -270,8 +264,7 @@ exit 0
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		openedForExec := (event.Actions & FileAttribChanged) == FileAttribChanged
-		assert.True(t, openedForExec)
+		assert.True(t, event.Actions.Has(FileAttribChanged))
 	}
 }
 
@@ -295,8 +288,7 @@ func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		created := (event.Actions & FileCreated) == FileCreated
-		assert.True(t, created)
+		assert.True(t, event.Actions.Has(FileCreated))
 	}
 }
 
@@ -320,8 +312,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
 		assert.Equal(t, event.Pid, pid)
-		created := (event.Actions & FileCreated) == FileCreated
-		assert.True(t, created)
+		assert.True(t, event.Actions.Has(FileCreated))
 	}
 }
 
@@ -350,8 +341,7 @@ func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		deleted := (event.Actions & FileDeleted) == FileDeleted
-		assert.True(t, deleted)
+		assert.True(t, event.Actions.Has(FileDeleted))
 	}
 }
 
@@ -380,7 +370,6 @@ func TestWithCapSysAdmFanotifyFileOrDirDeleted(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
 		assert.Equal(t, event.Pid, pid)
-		deleted := (event.Actions & FileDeleted) == FileDeleted
-		assert.True(t, deleted)
+		assert.True(t, event.Actions.Has(FileDeleted))
 	}
 }
