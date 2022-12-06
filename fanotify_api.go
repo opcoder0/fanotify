@@ -180,3 +180,8 @@ func (l *Listener) ClearWatch() error {
 func (actions Action) Has(a Action) bool {
 	return actions&a == a
 }
+
+// Or appends the specified action to the set of actions to watch for
+func (actions Action) Or(a Action) Action {
+	return actions | a
+}

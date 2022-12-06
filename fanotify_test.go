@@ -373,3 +373,11 @@ func TestWithCapSysAdmFanotifyFileOrDirDeleted(t *testing.T) {
 		assert.True(t, event.Actions.Has(FileDeleted))
 	}
 }
+
+func TestActions(t *testing.T) {
+	var actions Action
+	actions = FileCreated.Or(FileModified.Or(FileDeleted))
+	assert.True(t, actions.Has(FileCreated))
+	assert.True(t, actions.Has(FileModified))
+	assert.True(t, actions.Has(FileDeleted))
+}
