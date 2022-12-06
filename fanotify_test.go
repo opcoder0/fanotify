@@ -12,6 +12,11 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+//
+// TestWithCapSysAdm* tests require CAP_SYS_ADM privilege.
+// Run tests with sudo or as root -
+// sudo go test -v
+
 func TestNewListenerInvalidFlagClassContent(t *testing.T) {
 	var invalidFlag uint
 	var eventFlags uint
@@ -42,16 +47,18 @@ func TestNewListenerValidFlags(t *testing.T) {
 	assert.NotNil(t, l)
 }
 
-// func testKernelVersion(t *testing.T) {
-// 	maj, min, patch, err := kernelVersion()
-// 	assert.Equal(t, maj, 5)
-// 	assert.Equal(t, min, 15)
-// 	assert.Equal(t, patch, 0)
-// 	assert.Nil(t, err)
-// }
-
-func catFile(filename string) (int, error) {
-	cmd := exec.Command("cat", filename)
+func runAsCmd(args ...string) (int, error) {
+	var cmd *exec.Cmd
+	if len(args) == 0 {
+		return 0, errors.New("missing command name")
+	}
+	cmdName := args[0]
+	cmdArgs := args[1:]
+	if len(args) == 1 {
+		cmd = exec.Command(cmdName)
+	} else {
+		cmd = exec.Command(cmdName, cmdArgs...)
+	}
 	err := cmd.Run()
 	if err != nil {
 		return 0, err
@@ -59,16 +66,6 @@ func catFile(filename string) (int, error) {
 	return cmd.Process.Pid, nil
 }
 
-func modifyFile(filename string) (int, error) {
-	cmd := exec.Command("touch", "-m", filename)
-	err := cmd.Run()
-	if err != nil {
-		return 0, err
-	}
-	return cmd.Process.Pid, nil
-}
-
-// TestWithCapSysAdmFanotifyFileAccessed requires CAP_SYS_ADM privilege.
 func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	l, err := NewListener("/", 4096, true)
 	assert.Nil(t, err)
@@ -85,7 +82,7 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test file created %s", testFile)
-	pid, err := catFile(testFile)
+	pid, err := runAsCmd("cat", testFile)
 	assert.Nil(t, err)
 	select {
 	case <-time.After(100 * time.Millisecond):
@@ -98,7 +95,6 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	}
 }
 
-// TestWithCapSysAdmFanotifyFileModified requires CAP_SYS_ADM privilege.
 func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	l, err := NewListener("/", 4096, true)
 	assert.Nil(t, err)
@@ -115,7 +111,7 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	l.AddWatch(watchDir, action)
 	go l.Start()
 	defer l.Stop()
-	pid, err := modifyFile(testFile)
+	pid, err := runAsCmd("touch", "-m", testFile)
 	assert.Nil(t, err)
 	select {
 	case <-time.After(100 * time.Millisecond):
@@ -125,5 +121,266 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 		assert.Equal(t, event.Pid, pid)
 		isModifed := (event.Mask & FileModified) == FileModified
 		assert.True(t, isModifed)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	data := []byte("test data...")
+	testFile := fmt.Sprintf("%s/test.dat", watchDir)
+	err = os.WriteFile(testFile, data, 0666)
+	assert.Nil(t, err)
+	t.Logf("Test file created %s", testFile)
+	action := FileClosed
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	pid, err := runAsCmd("cat", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileClosed event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		closeNoWrite := (event.Mask & FileClosedWithNoWrite) == FileClosedWithNoWrite
+		assert.True(t, closeNoWrite)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	data := []byte("test data...")
+	testFile := fmt.Sprintf("%s/test.dat", watchDir)
+	err = os.WriteFile(testFile, data, 0666)
+	assert.Nil(t, err)
+	t.Logf("Test file created %s", testFile)
+	action := FileOpened
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	pid, err := runAsCmd("cat", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpened event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		opened := (event.Mask & FileOpened) == FileOpened
+		assert.True(t, opened)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	action := FileOrDirectoryOpened
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	pid, err := runAsCmd("ls", watchDir)
+	assert.Nil(t, err)
+	assert.NotEqual(t, pid, 0)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOrDirectoryOpened event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), fmt.Sprintf("%s/%s", watchDir, "."))
+		assert.Equal(t, event.Pid, pid)
+		opened := (event.Mask & FileOpened) == FileOpened
+		assert.True(t, opened)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileOpenForExec(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	data := []byte(`
+#!/bin/bash
+
+echo "test shell script"
+exit 0
+	`)
+	testFile := fmt.Sprintf("%s/test.sh", watchDir)
+	err = os.WriteFile(testFile, data, 0755)
+	assert.Nil(t, err)
+	t.Logf("Test shell script created %s", testFile)
+	action := FileOpenedForExec
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	pid, err := runAsCmd("bash", "-c", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpenedForExec event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		openedForExec := (event.Mask & FileOpenedForExec) == FileOpenedForExec
+		assert.True(t, openedForExec)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileAttribChanged(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	data := []byte(`
+#!/bin/bash
+
+echo "test shell script"
+exit 0
+	`)
+	testFile := fmt.Sprintf("%s/test.sh", watchDir)
+	err = os.WriteFile(testFile, data, 0666)
+	assert.Nil(t, err)
+	t.Logf("Test shell script created %s", testFile)
+	action := FileAttribChanged
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	pid, err := runAsCmd("chmod", "+x", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpenedForExec event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		openedForExec := (event.Mask & FileAttribChanged) == FileAttribChanged
+		assert.True(t, openedForExec)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	action := FileCreated
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	testFile := fmt.Sprintf("%s/test.txt", watchDir)
+	pid, err := runAsCmd("touch", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpenedForExec event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		created := (event.Mask & FileCreated) == FileCreated
+		assert.True(t, created)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	watchDir := t.TempDir()
+
+	t.Logf("Watch Directory: %s", watchDir)
+	action := FileOrDirCreated
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+	testDir := fmt.Sprintf("%s/testdir", watchDir)
+	pid, err := runAsCmd("mkdir", testDir)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpenedForExec event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
+		assert.Equal(t, event.Pid, pid)
+		created := (event.Mask & FileCreated) == FileCreated
+		assert.True(t, created)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
+
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+
+	watchDir := t.TempDir()
+	testFile := fmt.Sprintf("%s/test.txt", watchDir)
+	pid, err := runAsCmd("touch", testFile)
+	assert.Nil(t, err)
+
+	t.Logf("Watch Directory: %s", watchDir)
+	action := FileDeleted
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+
+	pid, err = runAsCmd("rm", "-f", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpenedForExec event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		deleted := (event.Mask & FileDeleted) == FileDeleted
+		assert.True(t, deleted)
+	}
+}
+
+func TestWithCapSysAdmFanotifyFileOrDirDeleted(t *testing.T) {
+
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+
+	watchDir := t.TempDir()
+	testDir := fmt.Sprintf("%s/testdir", watchDir)
+	pid, err := runAsCmd("mkdir", testDir)
+	assert.Nil(t, err)
+
+	t.Logf("Watch Directory: %s", watchDir)
+	action := FileOrDirDeleted
+	l.AddWatch(watchDir, action)
+	go l.Start()
+	defer l.Stop()
+
+	pid, err = runAsCmd("rm", "-rf", testDir)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileOpenedForExec event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
+		assert.Equal(t, event.Pid, pid)
+		deleted := (event.Mask & FileDeleted) == FileDeleted
+		assert.True(t, deleted)
 	}
 }

@@ -12,7 +12,13 @@ const (
 	// FileModified event when a file is modified
 	FileModified Action = unix.FAN_MODIFY
 
-	// FileClosed event when a file is closed
+	// FileClosedAfterWrite event when a file is closed
+	FileClosedAfterWrite Action = unix.FAN_CLOSE_WRITE
+
+	// FileClosedWithNoWrite event when a file is closed without writing
+	FileClosedWithNoWrite Action = unix.FAN_CLOSE_NOWRITE
+
+	// FileClosed event when a file is closed after write or no write
 	FileClosed Action = unix.FAN_CLOSE_WRITE | unix.FAN_CLOSE_NOWRITE
 
 	// FileOpened event when a file is opened
