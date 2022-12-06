@@ -35,8 +35,8 @@ type Event struct {
 	// when NewListener is created by passing `true` with `withName` argument. The feature is available
 	// only with kernels 5.9 or higher.
 	FileName string
-	// Mask holds bit mask representing the operation
-	Mask Action
+	// Actions holds bit mask representing the operations
+	Actions Action
 	// Pid Process ID of the process that caused the event
 	Pid int
 }

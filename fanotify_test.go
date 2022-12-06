@@ -90,7 +90,7 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		hasFileAccessed := (event.Mask & FileAccessed) == FileAccessed
+		hasFileAccessed := (event.Actions & FileAccessed) == FileAccessed
 		assert.True(t, hasFileAccessed)
 	}
 }
@@ -119,7 +119,7 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		isModifed := (event.Mask & FileModified) == FileModified
+		isModifed := (event.Actions & FileModified) == FileModified
 		assert.True(t, isModifed)
 	}
 }
@@ -148,7 +148,7 @@ func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		closeNoWrite := (event.Mask & FileClosedWithNoWrite) == FileClosedWithNoWrite
+		closeNoWrite := (event.Actions & FileClosedWithNoWrite) == FileClosedWithNoWrite
 		assert.True(t, closeNoWrite)
 	}
 }
@@ -177,7 +177,7 @@ func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		opened := (event.Mask & FileOpened) == FileOpened
+		opened := (event.Actions & FileOpened) == FileOpened
 		assert.True(t, opened)
 	}
 }
@@ -202,7 +202,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), fmt.Sprintf("%s/%s", watchDir, "."))
 		assert.Equal(t, event.Pid, pid)
-		opened := (event.Mask & FileOpened) == FileOpened
+		opened := (event.Actions & FileOpened) == FileOpened
 		assert.True(t, opened)
 	}
 }
@@ -236,7 +236,7 @@ exit 0
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		openedForExec := (event.Mask & FileOpenedForExec) == FileOpenedForExec
+		openedForExec := (event.Actions & FileOpenedForExec) == FileOpenedForExec
 		assert.True(t, openedForExec)
 	}
 }
@@ -270,7 +270,7 @@ exit 0
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		openedForExec := (event.Mask & FileAttribChanged) == FileAttribChanged
+		openedForExec := (event.Actions & FileAttribChanged) == FileAttribChanged
 		assert.True(t, openedForExec)
 	}
 }
@@ -295,7 +295,7 @@ func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		created := (event.Mask & FileCreated) == FileCreated
+		created := (event.Actions & FileCreated) == FileCreated
 		assert.True(t, created)
 	}
 }
@@ -320,7 +320,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
 		assert.Equal(t, event.Pid, pid)
-		created := (event.Mask & FileCreated) == FileCreated
+		created := (event.Actions & FileCreated) == FileCreated
 		assert.True(t, created)
 	}
 }
@@ -350,7 +350,7 @@ func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		deleted := (event.Mask & FileDeleted) == FileDeleted
+		deleted := (event.Actions & FileDeleted) == FileDeleted
 		assert.True(t, deleted)
 	}
 }
@@ -380,7 +380,7 @@ func TestWithCapSysAdmFanotifyFileOrDirDeleted(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
 		assert.Equal(t, event.Pid, pid)
-		deleted := (event.Mask & FileDeleted) == FileDeleted
+		deleted := (event.Actions & FileDeleted) == FileDeleted
 		assert.True(t, deleted)
 	}
 }

@@ -358,10 +358,10 @@ func (l *Listener) readEvents() error {
 					mask = mask ^ unix.FAN_ONDIR
 				}
 				event := Event{
-					Fd:   int(metadata.Fd),
-					Path: string(name[:n1]),
-					Mask: Action(mask),
-					Pid:  int(metadata.Pid),
+					Fd:      int(metadata.Fd),
+					Path:    string(name[:n1]),
+					Actions: Action(mask),
+					Pid:     int(metadata.Pid),
 				}
 				l.Events <- event
 
@@ -407,7 +407,7 @@ func (l *Listener) readEvents() error {
 					Fd:       fd,
 					Path:     pathName,
 					FileName: fileName,
-					Mask:     Action(mask),
+					Actions:  Action(mask),
 					Pid:      int(metadata.Pid),
 				}
 				l.Events <- event
