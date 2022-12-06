@@ -5,7 +5,9 @@ package fanotify
 
 import (
 	"errors"
+	"fmt"
 	"os"
+	"strings"
 
 	"golang.org/x/sys/unix"
 )
@@ -99,9 +101,9 @@ func NewListener(mountpointPath string, maxEvents uint, withName bool) (*Listene
 // The events are pushed into the Listener's `Events` buffered channel.
 // The function panics if there nothing to watch.
 func (l *Listener) Start() {
-	if len(l.watches) == 0 {
-		panic("Nothing to watch. Add Directory/File to the listener to watch")
-	}
+	//if len(l.watches) == 0 {
+	//		panic("Nothing to watch. Add Directory/File to the listener to watch")
+	//}
 	var fds [2]unix.PollFd
 	// Fanotify Fd
 	fds[0].Fd = int32(l.fd)
@@ -184,4 +186,34 @@ func (actions Action) Has(a Action) bool {
 // Or appends the specified action to the set of actions to watch for
 func (actions Action) Or(a Action) Action {
 	return actions | a
+}
+
+// String prints action
+func (a Action) String() string {
+	var actions = map[Action]string{
+		unix.FAN_ACCESS:        "Access",
+		unix.FAN_MODIFY:        "Modify",
+		unix.FAN_CLOSE_WRITE:   "CloseWrite",
+		unix.FAN_CLOSE_NOWRITE: "CloseNoWrite",
+		unix.FAN_OPEN:          "Open",
+		unix.FAN_OPEN_EXEC:     "OpenExec",
+		unix.FAN_ATTRIB:        "AttribChange",
+		unix.FAN_CREATE:        "Create",
+		unix.FAN_DELETE:        "Delete",
+		unix.FAN_DELETE_SELF:   "SelfDelete",
+		unix.FAN_MOVED_FROM:    "MovedFrom",
+		unix.FAN_MOVED_TO:      "MovedTo",
+		unix.FAN_MOVE_SELF:     "SelfMove",
+	}
+	var actionList []string
+	for k, v := range actions {
+		if a.Has(k) {
+			actionList = append(actionList, v)
+		}
+	}
+	return strings.Join(actionList, ",")
+}
+
+func (e Event) String() string {
+	return fmt.Sprintf("Fd:(%d), Pid:(%d), Action:(%s), Path:(%s), Filename:(%s)", e.Fd, e.Pid, e.Actions, e.Path, e.FileName)
 }
