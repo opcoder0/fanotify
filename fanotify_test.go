@@ -299,7 +299,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
 	watchDir := t.TempDir()
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileOrDirCreated
+	action := FileOrDirectoryCreated
 	l.AddWatch(watchDir, action)
 	go l.Start()
 	defer l.Stop()
@@ -345,7 +345,7 @@ func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 	}
 }
 
-func TestWithCapSysAdmFanotifyFileOrDirDeleted(t *testing.T) {
+func TestWithCapSysAdmFanotifyFileOrDirectoryDeleted(t *testing.T) {
 
 	l, err := NewListener("/", 4096, true)
 	assert.Nil(t, err)
@@ -357,7 +357,7 @@ func TestWithCapSysAdmFanotifyFileOrDirDeleted(t *testing.T) {
 	assert.Nil(t, err)
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileOrDirDeleted
+	action := FileOrDirectoryDeleted
 	l.AddWatch(watchDir, action)
 	go l.Start()
 	defer l.Stop()
@@ -390,7 +390,7 @@ func TestMultipleEvents(t *testing.T) {
 	defer l.Stop()
 
 	watchDir := t.TempDir()
-	actions := FileOrDirCreated.Or(FileModified.Or(FileDeleted))
+	actions := FileOrDirectoryCreated.Or(FileModified.Or(FileDeleted))
 	l.AddWatch(watchDir, actions)
 	testFile := fmt.Sprintf("%s/test.txt", watchDir)
 	pid, err := runAsCmd("touch", testFile) // create file
@@ -434,6 +434,105 @@ func TestMultipleEvents(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
 		assert.True(t, event.Actions.Has(FileDeleted))
+		t.Logf("Received: (%s)", event)
+	}
+}
+
+// FileCreated and FileClosed combination does not raise any events
+func TestWithCapSysAdmMarkCreateCloseBug(t *testing.T) {
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	go l.Start()
+	defer l.Stop()
+
+	watchDir := t.TempDir()
+	actions := FileCreated.Or(FileClosed)
+	l.AddWatch(watchDir, actions)
+	testFile := fmt.Sprintf("%s/test.txt", watchDir)
+	pid, err := runAsCmd("touch", testFile) // create file
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		assert.Failf(t, "BUG: no events after file create", "confirmed that no events are raised if mark contains unix.FAN_CREATE|unix.FAN_CLOSE")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		t.Logf("Received: (%s)", event)
+	}
+
+	// cat the file to simulate close after read
+	pid, err = runAsCmd("cat", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		assert.Failf(t, "BUG: no events after file close", "confirmed that no events are raised if mark contains unix.FAN_CREATE|unix.FAN_CLOSE")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		t.Logf("Received: (%s)", event)
+	}
+}
+
+// FileCreated and FileClosed combination does not raise any events
+func TestWithCapSysAdmMarkFileOrDirectoryOpenedBug(t *testing.T) {
+	// setup the file for modification
+	watchDir := t.TempDir()
+	testFile := fmt.Sprintf("%s/test.txt", watchDir)
+	_, err := runAsCmd("touch", testFile) // create file
+	assert.Nil(t, err)
+
+	// start the listener
+	l, err := NewListener("/", 4096, true)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	go l.Start()
+	defer l.Stop()
+	var actions Action
+	actions =
+		FileAccessed |
+			FileOrDirectoryAccessed |
+			FileModified |
+			FileOpenedForExec |
+			FileAttribChanged |
+			FileOrDirectoryAttribChanged |
+			FileCreated |
+			FileOrDirectoryCreated |
+			FileDeleted |
+			FileOrDirectoryDeleted |
+			WatchedFileDeleted |
+			WatchedFileOrDirectoryDeleted |
+			FileMovedFrom |
+			FileOrDirectoryMovedFrom |
+			FileMovedTo |
+			FileOrDirectoryMovedTo |
+			WatchedFileMoved |
+			WatchedFileOrDirectoryMoved |
+			FileOrDirectoryOpened
+	l.AddWatch(watchDir, actions)
+
+	// cat the file to simulate close after read
+	_, err = runAsCmd("cat", testFile)
+	assert.Nil(t, err)
+	n := 0
+	for len(l.Events) > 0 {
+		e := <-l.Events
+		t.Logf("drain-event: %v", e)
+		n++
+	}
+	t.Logf("BUG: received %d events; while cat would otherwise raise 1 FileAccessed event", n)
+
+	// BUG more duplicate flood events or no further events are received past this
+	// attribute change file
+	pid, err := runAsCmd("chmod", "+x", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		assert.Failf(t, "BUG: no events after chmod", "no events after the duplicate event flood")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		assert.True(t, event.Actions.Has(FileAttribChanged))
 		t.Logf("Received: (%s)", event)
 	}
 }

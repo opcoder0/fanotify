@@ -22,7 +22,6 @@ func main() {
 
         flag.StringVar(&listenPath, "listen-path", "", "path to watch events")
         flag.Parse()
-
         if listenPath == "" {
                 fmt.Println("missing listen path")
                 os.Exit(1)
@@ -41,21 +40,20 @@ func main() {
 			fanotify.FileModified |
 			fanotify.FileOpenedForExec |
 			fanotify.FileAttribChanged |
-			fanotify.FileOrDirAttribChanged |
+			fanotify.FileOrDirectoryAttribChanged |
 			fanotify.FileCreated |
-			fanotify.FileOrDirCreated |
+			fanotify.FileOrDirectoryCreated |
 			fanotify.FileDeleted |
-			fanotify.FileOrDirDeleted |
+			fanotify.FileOrDirectoryDeleted |
 			fanotify.WatchedFileDeleted |
-			fanotify.WatchedFileOrDirDeleted |
+			fanotify.WatchedFileOrDirectoryDeleted |
 			fanotify.FileMovedFrom |
-			fanotify.FileOrDirMovedFrom |
+			fanotify.FileOrDirectoryMovedFrom |
 			fanotify.FileMovedTo |
-			fanotify.FileOrDirMovedTo |
+			fanotify.FileOrDirectoryMovedTo |
 			fanotify.WatchedFileMoved |
-			fanotify.WatchedFileOrDirMoved
-
-        listener.AddWatch(listenPath, fanotify.FileOrDirectoryAccessed)
+			fanotify.WatchedFileOrDirectoryMoved
+        listener.AddWatch(listenPath, actions)
         go listener.Start()
         i := 1
         for event := range listener.Events {
@@ -69,3 +67,13 @@ func main() {
         }
 }
 ```
+
+## Known Issues
+
+Certain flag combinations / actions cause issues with event reporting.
+
+- `fanotify.FileCreated` (`unix.FAN_CREATE`) cannot be or-ed / combined with `fanotify.FileClosed` (`unix.FAN_CLOSE_WRITE` or `unix.FAN_CLOSE_NOWRITE`). The `fanotify` event notification group does not generate any event for this combination.
+
+- Using `fanotify.FileOpened` with any of the actions containing `OrDirectory` (`unix.FAN_ONDIR`) causes an event flood for the directory and then stopping raising any events at all.
+
+- `fanotifyFileOrDirectoryOpened` with any of the other actions causes an event flood for the directory and then stopping raising any events at all.

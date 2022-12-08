@@ -22,7 +22,7 @@ const (
 	FileClosed Action = unix.FAN_CLOSE_WRITE | unix.FAN_CLOSE_NOWRITE
 
 	// FileOpened event when a file is opened
-	// BUG Using FileOpened flag with any OnDir or OnDirectory actions
+	// BUG Using FileOpened flag with any OrDirectory actions
 	// causes an event flood and complete stoppage of events. The flag
 	// can be used with other file only flags or by itself
 	// without any errors/issues.
@@ -41,56 +41,56 @@ const (
 	// Requires Linux kernel 5.1 or later (requires FID)
 	FileAttribChanged Action = unix.FAN_ATTRIB
 
-	// FileOrDirAttribChanged event when a file or directory attribute has changed
+	// FileOrDirectoryAttribChanged event when a file or directory attribute has changed
 	// Requires Linux kernel 5.1 or later (requires FID)
-	FileOrDirAttribChanged Action = unix.FAN_ATTRIB | unix.FAN_ONDIR
+	FileOrDirectoryAttribChanged Action = unix.FAN_ATTRIB | unix.FAN_ONDIR
 
 	// FileCreated event when file a has been created
 	// Requires Linux kernel 5.1 or later (requires FID)
 	// BUG FileCreated does not work with FileClosed, FileClosedAfterWrite or FileClosedWithNoWrite
 	FileCreated Action = unix.FAN_CREATE
 
-	// FileOrDirCreated event when a file or directory has been created
+	// FileOrDirectoryCreated event when a file or directory has been created
 	// Requires Linux kernel 5.1 or later (requires FID)
-	FileOrDirCreated Action = unix.FAN_CREATE | unix.FAN_ONDIR
+	FileOrDirectoryCreated Action = unix.FAN_CREATE | unix.FAN_ONDIR
 
 	// FileDeleted event when file a has been deleted
 	// Requires Linux kernel 5.1 or later (requires FID)
 	FileDeleted Action = unix.FAN_DELETE
 
-	// FileOrDirDeleted event when a file or directory has been deleted
+	// FileOrDirectoryDeleted event when a file or directory has been deleted
 	// Requires Linux kernel 5.1 or later (requires FID)
-	FileOrDirDeleted Action = unix.FAN_DELETE | unix.FAN_ONDIR
+	FileOrDirectoryDeleted Action = unix.FAN_DELETE | unix.FAN_ONDIR
 
 	// WatchedFileDeleted event when a watched file has been deleted
 	// Requires Linux kernel 5.1 or later (requires FID)
 	WatchedFileDeleted Action = unix.FAN_DELETE_SELF
 
-	// WatchedFileOrDirDeleted event when a watched file or directory has been deleted
+	// WatchedFileOrDirectoryDeleted event when a watched file or directory has been deleted
 	// Requires Linux kernel 5.1 or later (requires FID)
-	WatchedFileOrDirDeleted Action = unix.FAN_DELETE_SELF | unix.FAN_ONDIR
+	WatchedFileOrDirectoryDeleted Action = unix.FAN_DELETE_SELF | unix.FAN_ONDIR
 
 	// FileMovedFrom event when a file has been moved from the watched directory
 	// Requires Linux kernel 5.1 or later (requires FID)
 	FileMovedFrom Action = unix.FAN_MOVED_FROM
 
-	// FileOrDirMovedFrom event when a file or directory has been moved from the watched directory
+	// FileOrDirectoryMovedFrom event when a file or directory has been moved from the watched directory
 	// Requires Linux kernel 5.1 or later (requires FID)
-	FileOrDirMovedFrom Action = unix.FAN_MOVED_FROM | unix.FAN_ONDIR
+	FileOrDirectoryMovedFrom Action = unix.FAN_MOVED_FROM | unix.FAN_ONDIR
 
 	// FileMovedTo event when a file has been moved to the watched directory
 	// Requires Linux kernel 5.1 or later (requires FID)
 	FileMovedTo Action = unix.FAN_MOVED_TO
 
-	// FileOrDirMovedTo event when a file or directory has been moved to the watched directory
+	// FileOrDirectoryMovedTo event when a file or directory has been moved to the watched directory
 	// Requires Linux kernel 5.1 or later (requires FID)
-	FileOrDirMovedTo Action = unix.FAN_MOVED_TO | unix.FAN_ONDIR
+	FileOrDirectoryMovedTo Action = unix.FAN_MOVED_TO | unix.FAN_ONDIR
 
 	// WatchedFileMoved event when a watched file has moved
 	// Requires Linux kernel 5.1 or later (requires FID)
 	WatchedFileMoved Action = unix.FAN_MOVE_SELF
 
-	// WatchedFileOrDirMoved event when a watched file or directory has moved
+	// WatchedFileOrDirectoryMoved event when a watched file or directory has moved
 	// Requires Linux kernel 5.1 or later (requires FID)
-	WatchedFileOrDirMoved Action = unix.FAN_MOVE_SELF | unix.FAN_ONDIR
+	WatchedFileOrDirectoryMoved Action = unix.FAN_MOVE_SELF | unix.FAN_ONDIR
 )
