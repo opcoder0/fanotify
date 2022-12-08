@@ -1,10 +1,18 @@
 # Fanotify Library
 
-Fanotify library for Go provides a simple API to monitor filesystem for specific events. The library attempts to simplify specifying events/actions to the watcher by providing valid flag combinations. The flag features are validated against the user's kernel version.
+Fanotify library provides a simple API to monitor filesystem for events.
 
-Many of the useful features provided by [fanotify](https://man7.org/linux/man-pages/man7/fanotify.7.html) are available from Linux kernel 5.1 onwards. Most of the useful features availabe through this library work best on kernels 5.1 or later.
+The listener is initialized with flags automatically based on the kernel version. The mark flag features that specify the
+the events to monitor a file/directory are validated and checked for valid combinations and validated against the kernel
+version.
 
-## Example: Listener watching for file/directory accessed events
+fanotify has features spanning different kernel versions -
+
+For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
+For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
+For Linux kernel version 5.9 or later the modified file name is made available in the event.
+
+## Example: Listener watching for events
 
 ```
 package main
