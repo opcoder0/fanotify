@@ -34,6 +34,27 @@ func main() {
                 os.Exit(1)
         }
         fmt.Println("Listening to events for:", listenPath)
+	var actions Action
+	actions =
+		fanotify.FileAccessed |
+			fanotify.FileOrDirectoryAccessed |
+			fanotify.FileModified |
+			fanotify.FileOpenedForExec |
+			fanotify.FileAttribChanged |
+			fanotify.FileOrDirAttribChanged |
+			fanotify.FileCreated |
+			fanotify.FileOrDirCreated |
+			fanotify.FileDeleted |
+			fanotify.FileOrDirDeleted |
+			fanotify.WatchedFileDeleted |
+			fanotify.WatchedFileOrDirDeleted |
+			fanotify.FileMovedFrom |
+			fanotify.FileOrDirMovedFrom |
+			fanotify.FileMovedTo |
+			fanotify.FileOrDirMovedTo |
+			fanotify.WatchedFileMoved |
+			fanotify.WatchedFileOrDirMoved
+
         listener.AddWatch(listenPath, fanotify.FileOrDirectoryAccessed)
         go listener.Start()
         i := 1

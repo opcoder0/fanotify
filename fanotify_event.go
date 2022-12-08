@@ -103,10 +103,6 @@ func fanotifyMarkMaskValid(mask uint64) error {
 	return nil
 }
 
-func markFlagsValid(flags uint64) bool {
-	return false
-}
-
 // Check if specified fanotify_init flags are supported for the given
 // kernel version. If none of the defined flags are specified
 // then the basic option works on any kernel version.

@@ -22,9 +22,15 @@ const (
 	FileClosed Action = unix.FAN_CLOSE_WRITE | unix.FAN_CLOSE_NOWRITE
 
 	// FileOpened event when a file is opened
+	// BUG Using FileOpened flag with any OnDir or OnDirectory actions
+	// causes an event flood and complete stoppage of events. The flag
+	// can be used with other file only flags or by itself
+	// without any errors/issues.
 	FileOpened Action = unix.FAN_OPEN
 
 	// FileOrDirectoryOpened event when a file or directory is opened
+	// BUG Using FileOrDirectoryOpened causes an event flood and complete
+	// stoppage of events. The flag by itself without any errors/issues.
 	FileOrDirectoryOpened Action = unix.FAN_OPEN | unix.FAN_ONDIR
 
 	// FileOpenedForExec event when a file is opened with the intent to be executed.
@@ -41,6 +47,7 @@ const (
 
 	// FileCreated event when file a has been created
 	// Requires Linux kernel 5.1 or later (requires FID)
+	// BUG FileCreated does not work with FileClosed, FileClosedAfterWrite or FileClosedWithNoWrite
 	FileCreated Action = unix.FAN_CREATE
 
 	// FileOrDirCreated event when a file or directory has been created
