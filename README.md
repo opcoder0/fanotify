@@ -27,7 +27,7 @@ func main() {
                 os.Exit(1)
         }
         mountPoint := "/"
-        listener, err := fanotify.NewListener(mountPoint, 4096, true)
+        listener, err := fanotify.NewListener(mountPoint)
         if err != nil {
                 fmt.Println(err)
                 os.Exit(1)
@@ -77,3 +77,19 @@ Certain flag combinations / actions cause issues with event reporting.
 - Using `fanotify.FileOpened` with any of the actions containing `OrDirectory` (`unix.FAN_ONDIR`) causes an event flood for the directory and then stopping raising any events at all.
 
 - `fanotifyFileOrDirectoryOpened` with any of the other actions causes an event flood for the directory and then stopping raising any events at all.
+
+## Tests
+
+Running tests require `CAP_SYS_ADM` privilege. To run the tests make sure to add `go` to the `sudo` PATH.
+
+The command runs all the tests except the ones that test the flag bugs mentioned in the "Known Issues" section above -
+
+```
+sudo go test -v
+```
+
+To run the tests with flag issues -
+
+```
+sudo go test -v -bug
+```

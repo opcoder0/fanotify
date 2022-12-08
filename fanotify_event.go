@@ -191,11 +191,32 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 		int(meta.Event_len) <= n)
 }
 
-func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Listener, error) {
+func newListener(mountpointPath string) (*Listener, error) {
+
+	var flags, eventFlags uint
+
 	maj, min, _, err := kernelVersion()
 	if err != nil {
 		return nil, err
 	}
+	switch {
+	case maj < 5:
+		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
+	case maj == 5:
+		if min < 1 {
+			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
+		}
+		if min >= 1 && min < 9 {
+			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_FID
+		}
+		if min >= 9 {
+			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
+		}
+	case maj > 5:
+		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
+	}
+	eventFlags = unix.O_RDONLY | unix.O_LARGEFILE | unix.O_CLOEXEC
+
 	if err := flagsValid(flags); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidFlagCombination, err)
 	}
@@ -233,7 +254,7 @@ func newListener(mountpointPath string, flags, eventFlags, maxEvents uint) (*Lis
 			r *os.File
 			w *os.File
 		}{r, w},
-		Events: make(chan Event, maxEvents),
+		Events: make(chan Event, 4096),
 	}
 	return listener, nil
 }
@@ -340,7 +361,7 @@ func (l *Listener) readEvents() error {
 				panic("metadata structure from the kernel does not match the structure definition at compile time")
 			}
 			if metadata.Fd != unix.FAN_NOFD {
-				// no fid
+				// no fid (applicable to kernels 5.0 and earlier)
 				procFdPath := fmt.Sprintf("/proc/self/fd/%d", metadata.Fd)
 				n1, err := unix.Readlink(procFdPath, name[:])
 				if err != nil {
@@ -360,9 +381,8 @@ func (l *Listener) readEvents() error {
 					Pid:     int(metadata.Pid),
 				}
 				l.Events <- event
-
 			} else {
-				// fid
+				// fid (applicable to kernels 5.1+)
 				fid = (*fanotifyEventInfoFID)(unsafe.Pointer(&buf[i+int(metadata.Metadata_len)]))
 				withName := false
 				switch {

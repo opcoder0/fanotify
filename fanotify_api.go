@@ -74,8 +74,12 @@ type Listener struct {
 // `maxEvents` defines the length of the buffered channel which holds the notifications. The minimum length is 4096.
 // `withName` setting this to true populates the file name under the watched parent.
 //
+// For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
+// For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
+// For Linux kernel version 5.9 or later the modified file name is made available in the event.
+//
 // NOTE that this call requires CAP_SYS_ADMIN privilege
-func NewListener(mountpointPath string, maxEvents uint, withName bool) (*Listener, error) {
+func NewListener(mountPoint string) (*Listener, error) {
 	capSysAdmin, err := checkCapSysAdmin()
 	if err != nil {
 		return nil, err
@@ -83,18 +87,7 @@ func NewListener(mountpointPath string, maxEvents uint, withName bool) (*Listene
 	if !capSysAdmin {
 		return nil, ErrCapSysAdmin
 	}
-	if maxEvents < 4096 {
-		maxEvents = 4096
-	}
-	var flags, eventFlags uint
-	if withName {
-		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
-	} else {
-		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_FID
-	}
-
-	eventFlags = unix.O_RDONLY | unix.O_LARGEFILE | unix.O_CLOEXEC
-	return newListener(mountpointPath, flags, eventFlags, maxEvents)
+	return newListener(mountPoint)
 }
 
 // Start starts the listener and polls the fanotify event notification group for marked events.
