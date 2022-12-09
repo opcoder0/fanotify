@@ -25,8 +25,8 @@ var (
 	ErrWatchPath = errors.New("missing watch path")
 )
 
-// Action represents an event / operation on a particular file/directory
-type Action uint64
+// EventType represents an event / operation on a particular file/directory
+type EventType uint64
 
 // Event represents a notification from the kernel for the file, directory
 // or a filesystem marked for watching.
@@ -39,8 +39,8 @@ type Event struct {
 	// when NewListener is created by passing `true` with `withName` argument. The feature is available
 	// only with kernels 5.9 or higher.
 	FileName string
-	// Actions holds bit mask representing the operations
-	Actions Action
+	// EventTypes holds bit mask representing the operations
+	EventTypes EventType
 	// Pid Process ID of the process that caused the event
 	Pid int
 }
@@ -146,25 +146,29 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// MarkMount adds, modifies or removes the fanotify mark (passed in as action) for the entire
+// MarkMount adds, modifies or removes the fanotify mark (passed in as eventTypes) for the entire
 // mountpoint. Passing true to remove, removes the mark from the mountpoint.
 // This method returns an [ErrWatchPath] if the listener was not initialized to monitor
 // the entire mountpoint. To mark specific files or directories use [AddWatch] method.
 // The entire mount cannot be monitored for the following events:
 // [FileCreated], [FileAttribChanged], [FileMovedFrom],
 // [FileMovedTo], [WatchedFileDeleted]
-// Passing any of these flags in action will return [ErrInvalidFlagCombination] error
-func (l *Listener) MarkMount(action Action, remove bool) error {
+// Passing any of these flags in eventTypes will return [ErrInvalidFlagCombination] error
+func (l *Listener) MarkMount(eventTypes EventType, remove bool) error {
 	if l.entireMount == false {
 		return ErrWatchPath
 	}
-	if action.Has(FileCreated) || action.Has(FileAttribChanged) || action.Has(FileMovedFrom) || action.Has(FileMovedTo) || action.Has(WatchedFileDeleted) {
+	if eventTypes.Has(FileCreated) ||
+		eventTypes.Has(FileAttribChanged) ||
+		eventTypes.Has(FileMovedFrom) ||
+		eventTypes.Has(FileMovedTo) ||
+		eventTypes.Has(WatchedFileDeleted) {
 		return ErrInvalidFlagCombination
 	}
 	if remove {
-		return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_REMOVE|unix.FAN_MARK_MOUNT, uint64(action), false)
+		return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_REMOVE|unix.FAN_MARK_MOUNT, uint64(eventTypes), false)
 	}
-	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(action), false)
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(eventTypes), false)
 }
 
 // AddWatch adds or modifies the fanotify mark for the specified path.
@@ -173,26 +177,26 @@ func (l *Listener) MarkMount(action Action, remove bool) error {
 // [os.ErrInvalid]. To mark the entire mountpoint use [MarkMount] method.
 // Certain flag combinations are known to cause issues.
 //  - [FileCreated] cannot be or-ed / combined with FileClosed. The fanotify system does not generate any event for this combination.
-//  - [FileOpened] with any of the actions containing OrDirectory causes an event flood for the directory and then stopping raising any events at all.
-//  - [FileOrDirectoryOpened] with any of the other actions causes an event flood for the directory and then stopping raising any events at all.
-func (l *Listener) AddWatch(path string, action Action) error {
+//  - [FileOpened] with any of the event types containing OrDirectory causes an event flood for the directory and then stopping raising any events at all.
+//  - [FileOrDirectoryOpened] with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
+func (l *Listener) AddWatch(path string, eventTypes EventType) error {
 	if l.entireMount {
 		return os.ErrInvalid
 	}
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
+	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD), false)
 }
 
 // DeleteWatch removes or modifies the fanotify mark for the specified path.
 // Calling DeleteWatch on the listener initialized to monitor the entire mountpoint
 // results in [os.ErrInvalid]. To modify the mark for the entire mountpoint use [MarkMount] method.
-func (l *Listener) DeleteWatch(parentDir string, action Action) error {
+func (l *Listener) DeleteWatch(parentDir string, eventTypes EventType) error {
 	if l.entireMount {
 		return os.ErrInvalid
 	}
-	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
+	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD), false)
 }
 
-// ClearWatch stops watching for all actions
+// ClearWatch stops watching for all event types
 func (l *Listener) ClearWatch() error {
 	if l == nil {
 		return ErrNilListener
@@ -204,19 +208,19 @@ func (l *Listener) ClearWatch() error {
 	return nil
 }
 
-// Has returns true if actions contains the passed in action (a).
-func (actions Action) Has(a Action) bool {
-	return actions&a == a
+// Has returns true if event types contains the passed in event type (et).
+func (eventTypes EventType) Has(et EventType) bool {
+	return eventTypes&et == et
 }
 
-// Or appends the specified action to the set of actions to watch for
-func (actions Action) Or(a Action) Action {
-	return actions | a
+// Or appends the specified event types to the set of event types to watch for
+func (eventTypes EventType) Or(et EventType) EventType {
+	return eventTypes | et
 }
 
-// String prints action
-func (a Action) String() string {
-	var actions = map[Action]string{
+// String prints event types
+func (a EventType) String() string {
+	var eventTypes = map[EventType]string{
 		unix.FAN_ACCESS:        "Access",
 		unix.FAN_MODIFY:        "Modify",
 		unix.FAN_CLOSE_WRITE:   "CloseWrite",
@@ -231,15 +235,15 @@ func (a Action) String() string {
 		unix.FAN_MOVED_TO:      "MovedTo",
 		unix.FAN_MOVE_SELF:     "SelfMove",
 	}
-	var actionList []string
-	for k, v := range actions {
+	var eventTypeList []string
+	for k, v := range eventTypes {
 		if a.Has(k) {
-			actionList = append(actionList, v)
+			eventTypeList = append(eventTypeList, v)
 		}
 	}
-	return strings.Join(actionList, ",")
+	return strings.Join(eventTypeList, ",")
 }
 
 func (e Event) String() string {
-	return fmt.Sprintf("Fd:(%d), Pid:(%d), Action:(%s), Path:(%s), Filename:(%s)", e.Fd, e.Pid, e.Actions, e.Path, e.FileName)
+	return fmt.Sprintf("Fd:(%d), Pid:(%d), EventType:(%s), Path:(%s), Filename:(%s)", e.Fd, e.Pid, e.EventTypes, e.Path, e.FileName)
 }

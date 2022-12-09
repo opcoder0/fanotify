@@ -44,8 +44,8 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileOrDirectoryAccessed
-	l.AddWatch(watchDir, action)
+	eventType := FileOrDirectoryAccessed
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	// generate event
@@ -62,7 +62,7 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileAccessed))
+		assert.True(t, event.EventTypes.Has(FileAccessed))
 	}
 }
 
@@ -78,8 +78,8 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test file created %s", testFile)
-	action := FileModified
-	l.AddWatch(watchDir, action)
+	eventType := FileModified
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	pid, err := runAsCmd("touch", "-m", testFile)
@@ -90,7 +90,7 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileModified))
+		assert.True(t, event.EventTypes.Has(FileModified))
 	}
 }
 
@@ -106,8 +106,8 @@ func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test file created %s", testFile)
-	action := FileClosed
-	l.AddWatch(watchDir, action)
+	eventType := FileClosed
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	pid, err := runAsCmd("cat", testFile)
@@ -118,7 +118,7 @@ func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileClosedWithNoWrite))
+		assert.True(t, event.EventTypes.Has(FileClosedWithNoWrite))
 	}
 }
 
@@ -134,8 +134,8 @@ func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test file created %s", testFile)
-	action := FileOpened
-	l.AddWatch(watchDir, action)
+	eventType := FileOpened
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	pid, err := runAsCmd("cat", testFile)
@@ -146,7 +146,7 @@ func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileOpened))
+		assert.True(t, event.EventTypes.Has(FileOpened))
 	}
 }
 
@@ -157,8 +157,8 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
 	watchDir := t.TempDir()
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileOrDirectoryOpened
-	l.AddWatch(watchDir, action)
+	eventType := FileOrDirectoryOpened
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	pid, err := runAsCmd("ls", watchDir)
@@ -170,7 +170,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), fmt.Sprintf("%s/%s", watchDir, "."))
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileOpened))
+		assert.True(t, event.EventTypes.Has(FileOpened))
 	}
 }
 
@@ -191,8 +191,8 @@ exit 0
 	err = os.WriteFile(testFile, data, 0755)
 	assert.Nil(t, err)
 	t.Logf("Test shell script created %s", testFile)
-	action := FileOpenedForExec
-	l.AddWatch(watchDir, action)
+	eventType := FileOpenedForExec
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	pid, err := runAsCmd("bash", "-c", testFile)
@@ -203,7 +203,7 @@ exit 0
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileOpenedForExec))
+		assert.True(t, event.EventTypes.Has(FileOpenedForExec))
 	}
 }
 
@@ -224,8 +224,8 @@ exit 0
 	err = os.WriteFile(testFile, data, 0666)
 	assert.Nil(t, err)
 	t.Logf("Test shell script created %s", testFile)
-	action := FileAttribChanged
-	l.AddWatch(watchDir, action)
+	eventType := FileAttribChanged
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	pid, err := runAsCmd("chmod", "+x", testFile)
@@ -236,7 +236,7 @@ exit 0
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileAttribChanged))
+		assert.True(t, event.EventTypes.Has(FileAttribChanged))
 	}
 }
 
@@ -247,8 +247,8 @@ func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
 	watchDir := t.TempDir()
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileCreated
-	l.AddWatch(watchDir, action)
+	eventType := FileCreated
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	testFile := fmt.Sprintf("%s/test.txt", watchDir)
@@ -260,7 +260,7 @@ func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileCreated))
+		assert.True(t, event.EventTypes.Has(FileCreated))
 	}
 }
 
@@ -271,8 +271,8 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
 	watchDir := t.TempDir()
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileOrDirectoryCreated
-	l.AddWatch(watchDir, action)
+	eventType := FileOrDirectoryCreated
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 	testDir := fmt.Sprintf("%s/testdir", watchDir)
@@ -284,7 +284,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileCreated))
+		assert.True(t, event.EventTypes.Has(FileCreated))
 	}
 }
 
@@ -300,8 +300,8 @@ func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 	assert.Nil(t, err)
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileDeleted
-	l.AddWatch(watchDir, action)
+	eventType := FileDeleted
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 
@@ -313,7 +313,7 @@ func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileDeleted))
+		assert.True(t, event.EventTypes.Has(FileDeleted))
 	}
 }
 
@@ -329,8 +329,8 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryDeleted(t *testing.T) {
 	assert.Nil(t, err)
 
 	t.Logf("Watch Directory: %s", watchDir)
-	action := FileOrDirectoryDeleted
-	l.AddWatch(watchDir, action)
+	eventType := FileOrDirectoryDeleted
+	l.AddWatch(watchDir, eventType)
 	go l.Start()
 	defer l.Stop()
 
@@ -342,16 +342,16 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryDeleted(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testDir)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileDeleted))
+		assert.True(t, event.EventTypes.Has(FileDeleted))
 	}
 }
 
-func TestActions(t *testing.T) {
-	var actions Action
-	actions = FileCreated.Or(FileModified.Or(FileDeleted))
-	assert.True(t, actions.Has(FileCreated))
-	assert.True(t, actions.Has(FileModified))
-	assert.True(t, actions.Has(FileDeleted))
+func TestEventTypes(t *testing.T) {
+	var eventTypes EventType
+	eventTypes = FileCreated.Or(FileModified.Or(FileDeleted))
+	assert.True(t, eventTypes.Has(FileCreated))
+	assert.True(t, eventTypes.Has(FileModified))
+	assert.True(t, eventTypes.Has(FileDeleted))
 }
 
 func TestMultipleEvents(t *testing.T) {
@@ -362,8 +362,8 @@ func TestMultipleEvents(t *testing.T) {
 	defer l.Stop()
 
 	watchDir := t.TempDir()
-	actions := FileOrDirectoryCreated.Or(FileModified.Or(FileDeleted))
-	l.AddWatch(watchDir, actions)
+	eventTypes := FileOrDirectoryCreated.Or(FileModified.Or(FileDeleted))
+	l.AddWatch(watchDir, eventTypes)
 	testFile := fmt.Sprintf("%s/test.txt", watchDir)
 	pid, err := runAsCmd("touch", testFile) // create file
 	assert.Nil(t, err)
@@ -373,7 +373,7 @@ func TestMultipleEvents(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileCreated))
+		assert.True(t, event.EventTypes.Has(FileCreated))
 		t.Logf("Received: (%s)", event)
 	}
 	touchPid := pid
@@ -387,7 +387,7 @@ func TestMultipleEvents(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileModified))
+		assert.True(t, event.EventTypes.Has(FileModified))
 		t.Logf("Received: (%s)", event)
 	}
 
@@ -405,7 +405,7 @@ func TestMultipleEvents(t *testing.T) {
 	case event := <-l.Events:
 		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 		assert.Equal(t, event.Pid, pid)
-		assert.True(t, event.Actions.Has(FileDeleted))
+		assert.True(t, event.EventTypes.Has(FileDeleted))
 		t.Logf("Received: (%s)", event)
 	}
 }
@@ -420,8 +420,8 @@ func TestWithCapSysAdmMarkCreateCloseBug(t *testing.T) {
 		defer l.Stop()
 
 		watchDir := t.TempDir()
-		actions := FileCreated.Or(FileClosed)
-		l.AddWatch(watchDir, actions)
+		eventTypes := FileCreated.Or(FileClosed)
+		l.AddWatch(watchDir, eventTypes)
 		testFile := fmt.Sprintf("%s/test.txt", watchDir)
 		pid, err := runAsCmd("touch", testFile) // create file
 		assert.Nil(t, err)
@@ -466,8 +466,8 @@ func TestWithCapSysAdmMarkFileOrDirectoryOpenedBug(t *testing.T) {
 		assert.NotNil(t, l)
 		go l.Start()
 		defer l.Stop()
-		var actions Action
-		actions =
+		var eventTypes EventType
+		eventTypes =
 			FileAccessed |
 				FileOrDirectoryAccessed |
 				FileModified |
@@ -487,7 +487,7 @@ func TestWithCapSysAdmMarkFileOrDirectoryOpenedBug(t *testing.T) {
 				WatchedFileMoved |
 				WatchedFileOrDirectoryMoved |
 				FileOrDirectoryOpened
-		l.AddWatch(watchDir, actions)
+		l.AddWatch(watchDir, eventTypes)
 
 		// cat the file to simulate close after read
 		_, err = runAsCmd("cat", testFile)
@@ -510,7 +510,7 @@ func TestWithCapSysAdmMarkFileOrDirectoryOpenedBug(t *testing.T) {
 		case event := <-l.Events:
 			assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
 			assert.Equal(t, event.Pid, pid)
-			assert.True(t, event.Actions.Has(FileAttribChanged))
+			assert.True(t, event.EventTypes.Has(FileAttribChanged))
 			t.Logf("Received event: (%s)", event)
 		}
 	} else {

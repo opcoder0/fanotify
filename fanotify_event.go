@@ -98,7 +98,7 @@ func fanotifyMarkMaskValid(mask uint64) error {
 		return n&k == k
 	}
 	if isSet(mask, unix.FAN_MARK_MOUNT) && (isSet(mask, unix.FAN_CREATE) || isSet(mask, unix.FAN_ATTRIB) || isSet(mask, unix.FAN_MOVE) || isSet(mask, unix.FAN_DELETE_SELF)) {
-		return errors.New("mountpoint cannot be watched for create, attrib, move or delete self actions")
+		return errors.New("mountpoint cannot be watched for create, attrib, move or delete self event types")
 	}
 	return nil
 }
@@ -379,10 +379,10 @@ func (l *Listener) readEvents() error {
 					mask = mask ^ unix.FAN_ONDIR
 				}
 				event := Event{
-					Fd:      int(metadata.Fd),
-					Path:    string(name[:n1]),
-					Actions: Action(mask),
-					Pid:     int(metadata.Pid),
+					Fd:         int(metadata.Fd),
+					Path:       string(name[:n1]),
+					EventTypes: EventType(mask),
+					Pid:        int(metadata.Pid),
 				}
 				l.Events <- event
 			} else {
@@ -424,11 +424,11 @@ func (l *Listener) readEvents() error {
 					mask = mask ^ unix.FAN_ONDIR
 				}
 				event := Event{
-					Fd:       fd,
-					Path:     pathName,
-					FileName: fileName,
-					Actions:  Action(mask),
-					Pid:      int(metadata.Pid),
+					Fd:         fd,
+					Path:       pathName,
+					FileName:   fileName,
+					EventTypes: EventType(mask),
+					Pid:        int(metadata.Pid),
 				}
 				l.Events <- event
 				i += int(metadata.Event_len)

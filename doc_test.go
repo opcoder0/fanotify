@@ -23,13 +23,13 @@ func ExampleListener_AddWatch() {
 
 func ExampleListener_AddWatch_all() {
 	var listener *fanotify.Listener
-	var actions fanotify.Action
+	var eventTypes fanotify.EventType
 
 	listener, err := fanotify.NewListener("/", false)
 	if err != nil {
 		log.Fatal("Cannot create listener for path /", err)
 	}
-	actions = fanotify.FileAccessed |
+	eventTypes = fanotify.FileAccessed |
 		fanotify.FileOrDirectoryAccessed |
 		fanotify.FileModified |
 		fanotify.FileOpenedForExec |
@@ -47,5 +47,5 @@ func ExampleListener_AddWatch_all() {
 		fanotify.FileOrDirectoryMovedTo |
 		fanotify.WatchedFileMoved |
 		fanotify.WatchedFileOrDirectoryMoved
-	listener.AddWatch("/home/user", actions)
+	listener.AddWatch("/home/user", eventTypes)
 }

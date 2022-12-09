@@ -41,8 +41,8 @@ func main() {
                 os.Exit(1)
         }
         fmt.Println("Listening to events for:", listenPath)
-	var actions Action
-	actions =
+	var eventTypes EventType
+	eventTypes =
 		fanotify.FileAccessed |
 			fanotify.FileOrDirectoryAccessed |
 			fanotify.FileModified |
@@ -61,7 +61,7 @@ func main() {
 			fanotify.FileOrDirectoryMovedTo |
 			fanotify.WatchedFileMoved |
 			fanotify.WatchedFileOrDirectoryMoved
-        listener.AddWatch(listenPath, actions)
+        listener.AddWatch(listenPath, eventTypes)
         go listener.Start()
         i := 1
         for event := range listener.Events {
@@ -78,13 +78,13 @@ func main() {
 
 ## Known Issues
 
-Certain flag combinations / actions cause issues with event reporting.
+Certain flag combinations / event types cause issues with event reporting.
 
 - `fanotify.FileCreated` (`unix.FAN_CREATE`) cannot be or-ed / combined with `fanotify.FileClosed` (`unix.FAN_CLOSE_WRITE` or `unix.FAN_CLOSE_NOWRITE`). The `fanotify` event notification group does not generate any event for this combination.
 
-- Using `fanotify.FileOpened` with any of the actions containing `OrDirectory` (`unix.FAN_ONDIR`) causes an event flood for the directory and then stopping raising any events at all.
+- Using `fanotify.FileOpened` with any of the event types containing `OrDirectory` (`unix.FAN_ONDIR`) causes an event flood for the directory and then stopping raising any events at all.
 
-- `fanotifyFileOrDirectoryOpened` with any of the other actions causes an event flood for the directory and then stopping raising any events at all.
+- `fanotifyFileOrDirectoryOpened` with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
 
 ## Tests
 
