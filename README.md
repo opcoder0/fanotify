@@ -8,9 +8,9 @@ version.
 
 fanotify has features spanning different kernel versions -
 
-For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
-For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
-For Linux kernel version 5.9 or later the modified file name is made available in the event.
+- For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
+- For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
+- For Linux kernel version 5.9 or later the modified file name is made available in the event.
 
 ## Example: Listener watching for events
 
