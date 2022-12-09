@@ -35,7 +35,7 @@ func main() {
                 os.Exit(1)
         }
         mountPoint := "/"
-        listener, err := fanotify.NewListener(mountPoint)
+        listener, err := fanotify.NewListener(mountPoint, false)
         if err != nil {
                 fmt.Println(err)
                 os.Exit(1)

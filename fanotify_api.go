@@ -1,17 +1,6 @@
 //go:build linux
 // +build linux
 
-// Package fanotify library provides a simple API to monitor filesystem for events.
-//
-// The listener is initialized with flags automatically based on the kernel version. The mark flag features that specify the
-// the events to monitor a file/directory are validated and checked for valid combinations and validated against the kernel
-// version.
-//
-// fanotify has features spanning different kernel versions -
-//
-// For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
-// For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
-// For Linux kernel version 5.9 or later the modified file name is made available in the event.
 package fanotify
 
 import (
@@ -32,6 +21,8 @@ var (
 	ErrNilListener = errors.New("nil listener")
 	// ErrUnsupportedOnKernelVersion indicates the feature/flag is unavailable for the current kernel version
 	ErrUnsupportedOnKernelVersion = errors.New("feature unsupported on current kernel version")
+	// ErrWatchPath indicates path needs to be specified for watching
+	ErrWatchPath = errors.New("missing watch path")
 )
 
 // Action represents an event / operation on a particular file/directory
@@ -65,6 +56,7 @@ type Listener struct {
 	mountpoint         *os.File
 	kernelMajorVersion int
 	kernelMinorVersion int
+	entireMount        bool
 	watches            map[string]bool
 	stopper            struct {
 		r *os.File
@@ -74,23 +66,26 @@ type Listener struct {
 	Events chan Event
 }
 
-// NewListener returns a fanotify listener from which events
+// NewListener returns a fanotify listener from which filesystem events
 // can be read. Each listener supports listening to events
-// under a single mount point.
+// under a single mountpoint.
 //
 // For cases where multiple mountpoints need to be monitored
 // multiple listener instances need to be used.
 //
-// `mountpointPath` can be any file/directory under the mount point being watched.
-// `maxEvents` defines the length of the buffered channel which holds the notifications. The minimum length is 4096.
-// `withName` setting this to true populates the file name under the watched parent.
+// mountpoint can be any file/directory under the mount point being watched.
+// Passing "true" to the entireMount flag monitors the entire mount point for marked
+// events. Passing "false" allows specifying multiple paths (files/directories)
+// under this mount point for monitoring filesystem events.
 //
-// For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
-// For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
-// For Linux kernel version 5.9 or later the modified file name is made available in the event.
+// The function returns a new instance of the listener. The fanotify flags are set
+// based on the running kernel version. ErrCapSysAdmin is returned if the process does not
+// have CAP_SYS_ADM capability.
 //
-// NOTE that this call requires CAP_SYS_ADMIN privilege
-func NewListener(mountPoint string) (*Listener, error) {
+//  - For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
+//  - For Linux kernel versions 5.1 till 5.8 (inclusive) additional information about the underlying filesystem object is correlated to an event.
+//  - For Linux kernel version 5.9 or later the modified file name is made available in the event.
+func NewListener(mountPoint string, entireMount bool) (*Listener, error) {
 	capSysAdmin, err := checkCapSysAdmin()
 	if err != nil {
 		return nil, err
@@ -98,16 +93,12 @@ func NewListener(mountPoint string) (*Listener, error) {
 	if !capSysAdmin {
 		return nil, ErrCapSysAdmin
 	}
-	return newListener(mountPoint)
+	return newListener(mountPoint, entireMount)
 }
 
 // Start starts the listener and polls the fanotify event notification group for marked events.
 // The events are pushed into the Listener's `Events` buffered channel.
-// The function panics if there nothing to watch.
 func (l *Listener) Start() {
-	//if len(l.watches) == 0 {
-	//		panic("Nothing to watch. Add Directory/File to the listener to watch")
-	//}
 	var fds [2]unix.PollFd
 	// Fanotify Fd
 	fds[0].Fd = int32(l.fd)
@@ -155,19 +146,50 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// AddWatch watches parent directory for specified actions
-func (l *Listener) AddWatch(parentDir string, action Action) error {
-	return l.fanotifyMark(parentDir, unix.FAN_MARK_ADD, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
-}
-
-// DeleteWatch stops watching the parent directory for the specified action
-func (l *Listener) DeleteWatch(parentDir string, action Action) error {
-	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
-}
-
-// WatchMountPoint watches the entire mount point for specified actions
-func (l *Listener) WatchMountPoint(action Action) error {
+// MarkMount adds, modifies or removes the fanotify mark (passed in as action) for the entire
+// mountpoint. Passing true to remove, removes the mark from the mountpoint.
+// This method returns an [ErrWatchPath] if the listener was not initialized to monitor
+// the entire mountpoint. To mark specific files or directories use [AddWatch] method.
+// The entire mount cannot be monitored for the following events:
+// [FileCreated], [FileAttribChanged], [FileMovedFrom],
+// [FileMovedTo], [WatchedFileDeleted]
+// Passing any of these flags in action will return [ErrInvalidFlagCombination] error
+func (l *Listener) MarkMount(action Action, remove bool) error {
+	if l.entireMount == false {
+		return ErrWatchPath
+	}
+	if action.Has(FileCreated) || action.Has(FileAttribChanged) || action.Has(FileMovedFrom) || action.Has(FileMovedTo) || action.Has(WatchedFileDeleted) {
+		return ErrInvalidFlagCombination
+	}
+	if remove {
+		return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_REMOVE|unix.FAN_MARK_MOUNT, uint64(action), false)
+	}
 	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(action), false)
+}
+
+// AddWatch adds or modifies the fanotify mark for the specified path.
+// The events are only raised for the specified directory and does raise events
+// for subdirectories. Calling AddWatch to mark the entire mountpoint results in
+// [os.ErrInvalid]. To mark the entire mountpoint use [MarkMount] method.
+// Certain flag combinations are known to cause issues.
+//  - [FileCreated] cannot be or-ed / combined with FileClosed. The fanotify system does not generate any event for this combination.
+//  - [FileOpened] with any of the actions containing OrDirectory causes an event flood for the directory and then stopping raising any events at all.
+//  - [FileOrDirectoryOpened] with any of the other actions causes an event flood for the directory and then stopping raising any events at all.
+func (l *Listener) AddWatch(path string, action Action) error {
+	if l.entireMount {
+		return os.ErrInvalid
+	}
+	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
+}
+
+// DeleteWatch removes or modifies the fanotify mark for the specified path.
+// Calling DeleteWatch on the listener initialized to monitor the entire mountpoint
+// results in [os.ErrInvalid]. To modify the mark for the entire mountpoint use [MarkMount] method.
+func (l *Listener) DeleteWatch(parentDir string, action Action) error {
+	if l.entireMount {
+		return os.ErrInvalid
+	}
+	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(action|unix.FAN_EVENT_ON_CHILD), false)
 }
 
 // ClearWatch stops watching for all actions

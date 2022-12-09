@@ -191,7 +191,7 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 		int(meta.Event_len) <= n)
 }
 
-func newListener(mountpointPath string) (*Listener, error) {
+func newListener(mountpointPath string, entireMount bool) (*Listener, error) {
 
 	var flags, eventFlags uint
 
@@ -215,8 +215,11 @@ func newListener(mountpointPath string) (*Listener, error) {
 	case maj > 5:
 		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
 	}
+	// FAN_MARK_MOUNT cannot be specified with FAN_REPORT_FID, FAN_REPORT_DIR_FID, FAN_REPORT_NAME
+	if entireMount {
+		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
+	}
 	eventFlags = unix.O_RDONLY | unix.O_LARGEFILE | unix.O_CLOEXEC
-
 	if err := flagsValid(flags); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidFlagCombination, err)
 	}
@@ -249,6 +252,7 @@ func newListener(mountpointPath string) (*Listener, error) {
 		mountpoint:         mountpoint,
 		kernelMajorVersion: maj,
 		kernelMinorVersion: min,
+		entireMount:        entireMount,
 		watches:            make(map[string]bool),
 		stopper: struct {
 			r *os.File
