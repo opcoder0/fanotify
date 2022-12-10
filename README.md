@@ -18,29 +18,29 @@ fanotify has features spanning different kernel versions -
 package main
 
 import (
-        "flag"
-        "fmt"
-        "os"
+	"flag"
+	"fmt"
+	"os"
 
-        "github.com/opcoder0/fanotify"
+	"github.com/opcoder0/fanotify"
 )
 
 func main() {
-        var listenPath string
+	var listenPath string
 
-        flag.StringVar(&listenPath, "listen-path", "", "path to watch events")
-        flag.Parse()
-        if listenPath == "" {
-                fmt.Println("missing listen path")
-                os.Exit(1)
-        }
-        mountPoint := "/"
-        listener, err := fanotify.NewListener(mountPoint, false)
-        if err != nil {
-                fmt.Println(err)
-                os.Exit(1)
-        }
-        fmt.Println("Listening to events for:", listenPath)
+	flag.StringVar(&listenPath, "listen-path", "", "path to watch events")
+	flag.Parse()
+	if listenPath == "" {
+		fmt.Println("missing listen path")
+		os.Exit(1)
+	}
+	mountPoint := "/"
+	listener, err := fanotify.NewListener(mountPoint, false)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Println("Listening to events for:", listenPath)
 	var eventTypes EventType
 	eventTypes =
 		fanotify.FileAccessed |
@@ -61,18 +61,18 @@ func main() {
 			fanotify.FileOrDirectoryMovedTo |
 			fanotify.WatchedFileMoved |
 			fanotify.WatchedFileOrDirectoryMoved
-        listener.AddWatch(listenPath, eventTypes)
-        go listener.Start()
-        i := 1
-        for event := range listener.Events {
-                fmt.Println(event)
-                if i == 5 {
-                        fmt.Println("Enough events. Stopping...")
-                        listener.Stop()
-                        break
-                }
-                i++
-        }
+	listener.AddWatch(listenPath, eventTypes)
+	go listener.Start()
+	i := 1
+	for event := range listener.Events {
+		fmt.Println(event)
+		if i == 5 {
+			fmt.Println("Enough events. Stopping...")
+			listener.Stop()
+			break
+		}
+		i++
+	}
 }
 ```
 

@@ -16,7 +16,7 @@ var (
 	// ErrCapSysAdmin indicates caller is missing CAP_SYS_ADMIN permissions
 	ErrCapSysAdmin = errors.New("require CAP_SYS_ADMIN capability")
 	// ErrInvalidFlagCombination indicates the bit/combination of flags are invalid
-	ErrInvalidFlagCombination = errors.New("invalid flag bits")
+	ErrInvalidFlagCombination = errors.New("invalid flag bitmask")
 	// ErrNilListener indicates the listener is nil
 	ErrNilListener = errors.New("nil listener")
 	// ErrUnsupportedOnKernelVersion indicates the feature/flag is unavailable for the current kernel version
@@ -36,8 +36,8 @@ type Event struct {
 	// Path holds the name of the parent directory
 	Path string
 	// FileName holds the name of the file under the watched parent. The value is only available
-	// when NewListener is created by passing `true` with `withName` argument. The feature is available
-	// only with kernels 5.9 or higher.
+	// on kernels 5.1 or greater (that support the receipt of events which contain additional information
+	// about the underlying filesystem object correlated to an event).
 	FileName string
 	// EventTypes holds bit mask representing the operations
 	EventTypes EventType
@@ -46,7 +46,7 @@ type Event struct {
 }
 
 // Listener represents a fanotify notification group that holds a list of files,
-// directories and filesystems under a given mountpoint for which events shall be created.
+// directories or a mountpoint for which events shall be created.
 type Listener struct {
 	// fd returned by fanotify_init
 	fd int
@@ -73,13 +73,13 @@ type Listener struct {
 // For cases where multiple mountpoints need to be monitored
 // multiple listener instances need to be used.
 //
-// mountpoint can be any file/directory under the mount point being watched.
-// Passing "true" to the entireMount flag monitors the entire mount point for marked
+// mountPoint can be any file/directory under the mount point being watched.
+// Passing "true" to the entireMount parameter monitors the entire mount point for marked
 // events. Passing "false" allows specifying multiple paths (files/directories)
 // under this mount point for monitoring filesystem events.
 //
 // The function returns a new instance of the listener. The fanotify flags are set
-// based on the running kernel version. ErrCapSysAdmin is returned if the process does not
+// based on the running kernel version. [ErrCapSysAdmin] is returned if the process does not
 // have CAP_SYS_ADM capability.
 //
 //  - For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
@@ -146,13 +146,12 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// MarkMount adds, modifies or removes the fanotify mark (passed in as eventTypes) for the entire
-// mountpoint. Passing true to remove, removes the mark from the mountpoint.
+// MarkMount adds, modifies or removes the fanotify mark (eventTypes) for the entire
+// mount point. Passing true to remove, removes the mark from the mount point.
 // This method returns an [ErrWatchPath] if the listener was not initialized to monitor
-// the entire mountpoint. To mark specific files or directories use [AddWatch] method.
+// the entire mount point. To mark specific files or directories use [AddWatch] method.
 // The entire mount cannot be monitored for the following events:
-// [FileCreated], [FileAttribChanged], [FileMovedFrom],
-// [FileMovedTo], [WatchedFileDeleted]
+// [FileCreated], [FileAttribChanged], [FileMovedFrom], [FileMovedTo], [WatchedFileDeleted]
 // Passing any of these flags in eventTypes will return [ErrInvalidFlagCombination] error
 func (l *Listener) MarkMount(eventTypes EventType, remove bool) error {
 	if l.entireMount == false {
@@ -174,9 +173,9 @@ func (l *Listener) MarkMount(eventTypes EventType, remove bool) error {
 // AddWatch adds or modifies the fanotify mark for the specified path.
 // The events are only raised for the specified directory and does raise events
 // for subdirectories. Calling AddWatch to mark the entire mountpoint results in
-// [os.ErrInvalid]. To mark the entire mountpoint use [MarkMount] method.
+// [os.ErrInvalid]. To mark the entire mount point use [MarkMount] method.
 // Certain flag combinations are known to cause issues.
-//  - [FileCreated] cannot be or-ed / combined with FileClosed. The fanotify system does not generate any event for this combination.
+//  - [FileCreated] cannot be or-ed / combined with [FileClosed]. The fanotify system does not generate any event for this combination.
 //  - [FileOpened] with any of the event types containing OrDirectory causes an event flood for the directory and then stopping raising any events at all.
 //  - [FileOrDirectoryOpened] with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
 func (l *Listener) AddWatch(path string, eventTypes EventType) error {
@@ -187,8 +186,8 @@ func (l *Listener) AddWatch(path string, eventTypes EventType) error {
 }
 
 // DeleteWatch removes or modifies the fanotify mark for the specified path.
-// Calling DeleteWatch on the listener initialized to monitor the entire mountpoint
-// results in [os.ErrInvalid]. To modify the mark for the entire mountpoint use [MarkMount] method.
+// Calling DeleteWatch on the listener initialized to monitor the entire mount point
+// results in [os.ErrInvalid]. To modify the mark for the entire mount point use [MarkMount] method.
 func (l *Listener) DeleteWatch(parentDir string, eventTypes EventType) error {
 	if l.entireMount {
 		return os.ErrInvalid
@@ -208,18 +207,18 @@ func (l *Listener) ClearWatch() error {
 	return nil
 }
 
-// Has returns true if event types contains the passed in event type (et).
-func (eventTypes EventType) Has(et EventType) bool {
-	return eventTypes&et == et
+// Has returns true if event types (e) contains the passed in event type (et).
+func (e EventType) Has(et EventType) bool {
+	return e&et == et
 }
 
 // Or appends the specified event types to the set of event types to watch for
-func (eventTypes EventType) Or(et EventType) EventType {
-	return eventTypes | et
+func (e EventType) Or(et EventType) EventType {
+	return e | et
 }
 
 // String prints event types
-func (a EventType) String() string {
+func (e EventType) String() string {
 	var eventTypes = map[EventType]string{
 		unix.FAN_ACCESS:        "Access",
 		unix.FAN_MODIFY:        "Modify",
@@ -237,7 +236,7 @@ func (a EventType) String() string {
 	}
 	var eventTypeList []string
 	for k, v := range eventTypes {
-		if a.Has(k) {
+		if e.Has(k) {
 			eventTypeList = append(eventTypeList, v)
 		}
 	}
