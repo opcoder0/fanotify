@@ -12,7 +12,7 @@ fanotify has features spanning different kernel versions -
 - For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
 - For Linux kernel version 5.9 or later the modified file name is made available in the event.
 
-## Example: Listener watching for events
+## Example: Listener watching for events on a directory
 
 ```
 package main
@@ -76,6 +76,53 @@ func main() {
 }
 ```
 
+## Example: Listener watching for events on a mount point
+
+```
+package main
+
+import (
+	"flag"
+	"fmt"
+	"os"
+
+	"github.com/opcoder0/fanotify"
+)
+
+func main() {
+	var mountPoint string
+
+	flag.StringVar(&mountPoint, "mount-path", "", "mount point path")
+	flag.Parse()
+
+	if mountPoint == "" {
+		fmt.Println("missing mount path")
+		os.Exit(1)
+	}
+	listener, err := fanotify.NewListener(mountPoint, true)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
+	fmt.Println("Listening to events for:", mountPoint)
+	var eventTypes fanotify.EventType
+	eventTypes = fanotify.FileAccessed |
+			fanotify.FileOrDirectoryAccessed |
+			fanotify.FileModified |
+			fanotify.FileOpenedForExec |
+			fanotify.FileOpened
+	err = listener.MarkMount(eventTypes, false)
+	if err != nil {
+		fmt.Println("MarkMount:", err)
+		os.Exit(1)
+	}
+	go listener.Start()
+	for event := range listener.Events {
+		fmt.Println(event)
+	}
+	listener.Stop()
+}
+```
 ## Known Issues
 
 Certain flag combinations / event types cause issues with event reporting.

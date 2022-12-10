@@ -74,9 +74,11 @@ type Listener struct {
 // multiple listener instances need to be used.
 //
 // mountPoint can be any file/directory under the mount point being watched.
-// Passing "true" to the entireMount parameter monitors the entire mount point for marked
-// events. Passing "false" allows specifying multiple paths (files/directories)
-// under this mount point for monitoring filesystem events.
+// entireMount when "true" monitors the entire mount point for marked
+// events which includes all directories, subdirectories, and the
+// contained files of the mount point. Passing "false" allows specifying
+// multiple paths (files/directories)
+// under this mount point for monitoring filesystem events using AddWatch.
 //
 // The function returns a new instance of the listener. The fanotify flags are set
 // based on the running kernel version. [ErrCapSysAdmin] is returned if the process does not
@@ -150,17 +152,26 @@ func (l *Listener) Stop() {
 // mount point. Passing true to remove, removes the mark from the mount point.
 // This method returns an [ErrWatchPath] if the listener was not initialized to monitor
 // the entire mount point. To mark specific files or directories use [AddWatch] method.
-// The entire mount cannot be monitored for the following events:
-// [FileCreated], [FileAttribChanged], [FileMovedFrom], [FileMovedTo], [WatchedFileDeleted]
-// Passing any of these flags in eventTypes will return [ErrInvalidFlagCombination] error
+// The entire mount cannot be monitored for any events for which new directory modification
+// events are provided. Passing any of these directory modification flags in eventTypes
+// will return [ErrInvalidFlagCombination] error. Valid eventTypes are
+// [FileAccessed], [FileOrDirectoryAccessed], [FileModified], [FileOpenedForExec]
+// [FileOpened], [FileOrDirectoryOpened].
 func (l *Listener) MarkMount(eventTypes EventType, remove bool) error {
 	if l.entireMount == false {
 		return ErrWatchPath
 	}
-	if eventTypes.Has(FileCreated) ||
-		eventTypes.Has(FileAttribChanged) ||
-		eventTypes.Has(FileMovedFrom) ||
+	if eventTypes.Has(FileAttribChanged) ||
+		eventTypes.Has(FileOrDirectoryAttribChanged) ||
+		eventTypes.Has(FileCreated) ||
+		eventTypes.Has(FileOrDirectoryCreated) ||
+		eventTypes.Has(FileDeleted) ||
+		eventTypes.Has(FileOrDirectoryDeleted) ||
+		eventTypes.Has(WatchedFileDeleted) ||
+		eventTypes.Has(WatchedFileOrDirectoryDeleted) ||
 		eventTypes.Has(FileMovedTo) ||
+		eventTypes.Has(FileMovedFrom) ||
+		eventTypes.Has(WatchedFileMoved) ||
 		eventTypes.Has(WatchedFileDeleted) {
 		return ErrInvalidFlagCombination
 	}

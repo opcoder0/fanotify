@@ -385,6 +385,9 @@ func (l *Listener) readEvents() error {
 					Pid:        int(metadata.Pid),
 				}
 				l.Events <- event
+				i += int(metadata.Event_len)
+				n -= int(metadata.Event_len)
+				metadata = (*unix.FanotifyEventMetadata)(unsafe.Pointer(&buf[i]))
 			} else {
 				// fid (applicable to kernels 5.1+)
 				fid = (*fanotifyEventInfoFID)(unsafe.Pointer(&buf[i+int(metadata.Metadata_len)]))
