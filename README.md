@@ -12,126 +12,17 @@ fanotify has features spanning different kernel versions -
 - For Linux kernel versions 5.1 - 5.8 additional information about the underlying filesystem object is correlated to an event.
 - For Linux kernel version 5.9 or later the modified file name is made available in the event.
 
-## Example: Listener watching for events on a directory
+## Examples
 
-```
-package main
+Example code for different use-cases can be found here https://github.com/opcoder0/fanotify-examples
 
-import (
-	"flag"
-	"fmt"
-	"os"
-
-	"github.com/opcoder0/fanotify"
-)
-
-func main() {
-	var listenPath string
-
-	flag.StringVar(&listenPath, "listen-path", "", "path to watch events")
-	flag.Parse()
-	if listenPath == "" {
-		fmt.Println("missing listen path")
-		os.Exit(1)
-	}
-	mountPoint := "/"
-	listener, err := fanotify.NewListener(mountPoint, false)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println("Listening to events for:", listenPath)
-	var eventTypes EventType
-	eventTypes =
-		fanotify.FileAccessed |
-			fanotify.FileOrDirectoryAccessed |
-			fanotify.FileModified |
-			fanotify.FileOpenedForExec |
-			fanotify.FileAttribChanged |
-			fanotify.FileOrDirectoryAttribChanged |
-			fanotify.FileCreated |
-			fanotify.FileOrDirectoryCreated |
-			fanotify.FileDeleted |
-			fanotify.FileOrDirectoryDeleted |
-			fanotify.WatchedFileDeleted |
-			fanotify.WatchedFileOrDirectoryDeleted |
-			fanotify.FileMovedFrom |
-			fanotify.FileOrDirectoryMovedFrom |
-			fanotify.FileMovedTo |
-			fanotify.FileOrDirectoryMovedTo |
-			fanotify.WatchedFileMoved |
-			fanotify.WatchedFileOrDirectoryMoved
-	listener.AddWatch(listenPath, eventTypes)
-	go listener.Start()
-	i := 1
-	for event := range listener.Events {
-		fmt.Println(event)
-		if i == 5 {
-			fmt.Println("Enough events. Stopping...")
-			listener.Stop()
-			break
-		}
-		i++
-	}
-}
-```
-
-## Example: Listener watching for events on a mount point
-
-```
-package main
-
-import (
-	"flag"
-	"fmt"
-	"os"
-
-	"github.com/opcoder0/fanotify"
-)
-
-func main() {
-	var mountPoint string
-
-	flag.StringVar(&mountPoint, "mount-path", "", "mount point path")
-	flag.Parse()
-
-	if mountPoint == "" {
-		fmt.Println("missing mount path")
-		os.Exit(1)
-	}
-	listener, err := fanotify.NewListener(mountPoint, true)
-	if err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
-	fmt.Println("Listening to events for:", mountPoint)
-	var eventTypes fanotify.EventType
-	eventTypes = fanotify.FileAccessed |
-			fanotify.FileOrDirectoryAccessed |
-			fanotify.FileModified |
-			fanotify.FileOpenedForExec |
-			fanotify.FileOpened
-	err = listener.MarkMount(eventTypes, false)
-	if err != nil {
-		fmt.Println("MarkMount:", err)
-		os.Exit(1)
-	}
-	go listener.Start()
-	for event := range listener.Events {
-		fmt.Println(event)
-	}
-	listener.Stop()
-}
-```
 ## Known Issues
 
 Certain flag combinations / event types cause issues with event reporting.
 
-- `fanotify.FileCreated` (`unix.FAN_CREATE`) cannot be or-ed / combined with `fanotify.FileClosed` (`unix.FAN_CLOSE_WRITE` or `unix.FAN_CLOSE_NOWRITE`). The `fanotify` event notification group does not generate any event for this combination.
-
-- Using `fanotify.FileOpened` with any of the event types containing `OrDirectory` (`unix.FAN_ONDIR`) causes an event flood for the directory and then stopping raising any events at all.
-
-- `fanotifyFileOrDirectoryOpened` with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
+- `fanotify.FileCreated` cannot be or-ed / combined with `fanotify.FileClosed`. The `fanotify` event notification group does not generate any event for this combination.
+- Using `fanotify.FileOpened` with any of the event types containing `OrDirectory` causes numerous duplicate events for the path.
+- `fanotifyFileOrDirectoryOpened` with any of the other event types causes numerous duplicate events for the path.
 
 ## Tests
 

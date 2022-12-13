@@ -4,6 +4,8 @@
 package fanotify
 
 import (
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
@@ -17,8 +19,6 @@ var (
 	ErrCapSysAdmin = errors.New("require CAP_SYS_ADMIN capability")
 	// ErrInvalidFlagCombination indicates the bit/combination of flags are invalid
 	ErrInvalidFlagCombination = errors.New("invalid flag bitmask")
-	// ErrNilListener indicates the listener is nil
-	ErrNilListener = errors.New("nil listener")
 	// ErrUnsupportedOnKernelVersion indicates the feature/flag is unavailable for the current kernel version
 	ErrUnsupportedOnKernelVersion = errors.New("feature unsupported on current kernel version")
 	// ErrWatchPath indicates path needs to be specified for watching
@@ -28,8 +28,28 @@ var (
 // EventType represents an event / operation on a particular file/directory
 type EventType uint64
 
-// Event represents a notification from the kernel for the file, directory
-// or a filesystem marked for watching.
+// PermissionType represents value indicating when the permission event must be requested.
+type PermissionType int
+
+const (
+	// PermissionNone is used to indicate the listener is for notification events only.
+	PermissionNone PermissionType = 0
+	// PreContent is intended for event listeners that
+	// need to access files before they contain their final data.
+	PreContent PermissionType = 1
+	// PostContent is intended for event listeners that
+	// need to access files when they already contain their final content.
+	PostContent PermissionType = 2
+)
+
+// Event represents a notification or a permission event from the kernel for the file,
+// directory marked for watching.
+// Notification events are merely informative and require
+// no action to be taken by the receiving application with the exception being that the
+// file descriptor provided within the event must be closed.
+// Permission events are requests to the receiving application to decide whether permission
+// for a file access shall be granted. For these events, the recipient must write a
+// response which decides whether access is granted or not.
 type Event struct {
 	// Fd is the open file descriptor for the file/directory being watched
 	Fd int
@@ -45,8 +65,9 @@ type Event struct {
 	Pid int
 }
 
-// Listener represents a fanotify notification group that holds a list of files,
-// directories or a mountpoint for which events shall be created.
+// Listener represents a generic notification group that holds a list of files,
+// directories or a mountpoint for which notification or permission
+// events shall be created.
 type Listener struct {
 	// fd returned by fanotify_init
 	fd int
@@ -57,37 +78,56 @@ type Listener struct {
 	kernelMajorVersion int
 	kernelMinorVersion int
 	entireMount        bool
+	notificationOnly   bool
 	watches            map[string]bool
 	stopper            struct {
 		r *os.File
 		w *os.File
 	}
-	// Events a buffered channel holding fanotify notifications for the watched file/directory.
+	// Events holds either notification events for the watched file/directory.
 	Events chan Event
+	// PermissionEvents holds permission request events for the watched file/directory.
+	PermissionEvents chan Event
 }
 
-// NewListener returns a fanotify listener from which filesystem events
-// can be read. Each listener supports listening to events
-// under a single mountpoint.
-//
-// For cases where multiple mountpoints need to be monitored
+// NewListener returns a fanotify listener from which filesystem
+// notification events can be read. Each listener
+// supports listening to events under a single mount point.
+// For cases where multiple mount points need to be monitored
 // multiple listener instances need to be used.
 //
-// mountPoint can be any file/directory under the mount point being watched.
-// entireMount when "true" monitors the entire mount point for marked
-// events which includes all directories, subdirectories, and the
-// contained files of the mount point. Passing "false" allows specifying
-// multiple paths (files/directories)
-// under this mount point for monitoring filesystem events using AddWatch.
+// Notification events are merely informative and require
+// no action to be taken by the receiving application with the
+// exception being that the file descriptor provided within the
+// event must be closed.
 //
-// The function returns a new instance of the listener. The fanotify flags are set
-// based on the running kernel version. [ErrCapSysAdmin] is returned if the process does not
-// have CAP_SYS_ADM capability.
+// Permission events are requests to the receiving application to
+// decide whether permission for a file access shall be granted.
+// For these events, the recipient must write a response which decides
+// whether access is granted or not.
+//
+// - mountPoint can be any file/directory under the mount point being
+//   watched.
+// - entireMount initializes the listener to monitor either the
+//   the entire mount point (when true) or allows adding files
+//   or directories to the listener's watch list (when false).
+// - permType initializes the listener either notification events
+//   or both notification and permission events.
+//   Passing [PreContent] value allows the receipt of events
+//   notifying that a file has been accessed and events for permission
+//   decisions if a file may be accessed. It is intended for event listeners
+//   that need to access files before they contain their final data. Passing
+//   [PostContent] is intended for event listeners that need to access
+//   files when they already contain their final content.
+//
+// The function returns a new instance of the listener. The fanotify flags
+// are set based on the running kernel version. [ErrCapSysAdmin] is returned
+// if the process does not have CAP_SYS_ADM capability.
 //
 //  - For Linux kernel version 5.0 and earlier no additional information about the underlying filesystem object is available.
 //  - For Linux kernel versions 5.1 till 5.8 (inclusive) additional information about the underlying filesystem object is correlated to an event.
 //  - For Linux kernel version 5.9 or later the modified file name is made available in the event.
-func NewListener(mountPoint string, entireMount bool) (*Listener, error) {
+func NewListener(mountPoint string, entireMount bool, permType PermissionType) (*Listener, error) {
 	capSysAdmin, err := checkCapSysAdmin()
 	if err != nil {
 		return nil, err
@@ -95,13 +135,20 @@ func NewListener(mountPoint string, entireMount bool) (*Listener, error) {
 	if !capSysAdmin {
 		return nil, ErrCapSysAdmin
 	}
-	return newListener(mountPoint, entireMount)
+	isNotificationListener := true
+	if permType == PreContent || permType == PostContent {
+		isNotificationListener = false
+	}
+	return newListener(mountPoint, entireMount, isNotificationListener, permType)
 }
 
 // Start starts the listener and polls the fanotify event notification group for marked events.
-// The events are pushed into the Listener's `Events` buffered channel.
+// The events are pushed into the Listener's Events channel.
 func (l *Listener) Start() {
 	var fds [2]unix.PollFd
+	if l == nil {
+		panic("nil listener")
+	}
 	// Fanotify Fd
 	fds[0].Fd = int32(l.fd)
 	fds[0].Events = unix.POLLIN
@@ -148,68 +195,76 @@ func (l *Listener) Stop() {
 	close(l.Events)
 }
 
-// MarkMount adds, modifies or removes the fanotify mark (eventTypes) for the entire
-// mount point. Passing true to remove, removes the mark from the mount point.
+// WatchMount adds or modifies the notification marks for the entire
+// mount point.
 // This method returns an [ErrWatchPath] if the listener was not initialized to monitor
 // the entire mount point. To mark specific files or directories use [AddWatch] method.
-// The entire mount cannot be monitored for any events for which new directory modification
-// events are provided. Passing any of these directory modification flags in eventTypes
-// will return [ErrInvalidFlagCombination] error. Valid eventTypes are
-// [FileAccessed], [FileOrDirectoryAccessed], [FileModified], [FileOpenedForExec]
-// [FileOpened], [FileOrDirectoryOpened].
-func (l *Listener) MarkMount(eventTypes EventType, remove bool) error {
-	if l.entireMount == false {
-		return ErrWatchPath
-	}
-	if eventTypes.Has(FileAttribChanged) ||
-		eventTypes.Has(FileOrDirectoryAttribChanged) ||
-		eventTypes.Has(FileCreated) ||
-		eventTypes.Has(FileOrDirectoryCreated) ||
-		eventTypes.Has(FileDeleted) ||
-		eventTypes.Has(FileOrDirectoryDeleted) ||
-		eventTypes.Has(WatchedFileDeleted) ||
-		eventTypes.Has(WatchedFileOrDirectoryDeleted) ||
-		eventTypes.Has(FileMovedTo) ||
-		eventTypes.Has(FileMovedFrom) ||
-		eventTypes.Has(WatchedFileMoved) ||
-		eventTypes.Has(WatchedFileDeleted) {
-		return ErrInvalidFlagCombination
-	}
-	if remove {
-		return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_REMOVE|unix.FAN_MARK_MOUNT, uint64(eventTypes), false)
-	}
-	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(eventTypes), false)
+// The following event types are considered invalid and WatchMount returns [ErrInvalidFlagCombination]
+// for - [FileCreated], [FileAttribChanged], [FileMovedTo], [FileMovedFrom], [WatchedFileDeleted],
+// [WatchedFileOrDirectoryDeleted], [FileDeleted], [FileOrDirectoryDeleted]
+func (l *Listener) WatchMount(eventTypes EventType) error {
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(eventTypes))
+}
+
+// UnwatchMount removes the notification marks for the entire mount point.
+// This method returns an [ErrWatchPath] if the listener was not initialized to monitor
+// the entire mount point. To unmark specific files or directories use [DeleteWatch] method.
+func (l *Listener) UnwatchMount(eventTypes EventType) error {
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_REMOVE|unix.FAN_MARK_MOUNT, uint64(eventTypes))
 }
 
 // AddWatch adds or modifies the fanotify mark for the specified path.
 // The events are only raised for the specified directory and does raise events
 // for subdirectories. Calling AddWatch to mark the entire mountpoint results in
-// [os.ErrInvalid]. To mark the entire mount point use [MarkMount] method.
+// [os.ErrInvalid]. To watch the entire mount point use [WatchMount] method.
 // Certain flag combinations are known to cause issues.
 //  - [FileCreated] cannot be or-ed / combined with [FileClosed]. The fanotify system does not generate any event for this combination.
 //  - [FileOpened] with any of the event types containing OrDirectory causes an event flood for the directory and then stopping raising any events at all.
 //  - [FileOrDirectoryOpened] with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
 func (l *Listener) AddWatch(path string, eventTypes EventType) error {
+	if l == nil {
+		panic("nil listener")
+	}
 	if l.entireMount {
 		return os.ErrInvalid
 	}
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD), false)
+	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD))
 }
 
-// DeleteWatch removes or modifies the fanotify mark for the specified path.
+// Allow sends an "allowed" response to the permission request event.
+func (l *Listener) Allow(e Event) {
+	var response unix.FanotifyResponse
+	response.Fd = int32(e.Fd)
+	response.Response = unix.FAN_ALLOW
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, &response)
+	unix.Write(l.fd, buf.Bytes())
+}
+
+// Deny sends an "denied" response to the permission request event.
+func (l *Listener) Deny(e Event) {
+	var response unix.FanotifyResponse
+	response.Fd = int32(e.Fd)
+	response.Response = unix.FAN_DENY
+	buf := new(bytes.Buffer)
+	binary.Write(buf, binary.LittleEndian, &response)
+	unix.Write(l.fd, buf.Bytes())
+}
+
+// DeleteWatch removes/unmarks the fanotify mark for the specified path.
 // Calling DeleteWatch on the listener initialized to monitor the entire mount point
-// results in [os.ErrInvalid]. To modify the mark for the entire mount point use [MarkMount] method.
+// results in [os.ErrInvalid]. Use [UnwatchMount] for deleting marks on the mount point.
 func (l *Listener) DeleteWatch(parentDir string, eventTypes EventType) error {
 	if l.entireMount {
 		return os.ErrInvalid
 	}
-	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD), false)
+	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD))
 }
 
 // ClearWatch stops watching for all event types
 func (l *Listener) ClearWatch() error {
 	if l == nil {
-		return ErrNilListener
+		panic("nil listener")
 	}
 	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
 		return err
@@ -231,19 +286,22 @@ func (e EventType) Or(et EventType) EventType {
 // String prints event types
 func (e EventType) String() string {
 	var eventTypes = map[EventType]string{
-		unix.FAN_ACCESS:        "Access",
-		unix.FAN_MODIFY:        "Modify",
-		unix.FAN_CLOSE_WRITE:   "CloseWrite",
-		unix.FAN_CLOSE_NOWRITE: "CloseNoWrite",
-		unix.FAN_OPEN:          "Open",
-		unix.FAN_OPEN_EXEC:     "OpenExec",
-		unix.FAN_ATTRIB:        "AttribChange",
-		unix.FAN_CREATE:        "Create",
-		unix.FAN_DELETE:        "Delete",
-		unix.FAN_DELETE_SELF:   "SelfDelete",
-		unix.FAN_MOVED_FROM:    "MovedFrom",
-		unix.FAN_MOVED_TO:      "MovedTo",
-		unix.FAN_MOVE_SELF:     "SelfMove",
+		unix.FAN_ACCESS:         "Access",
+		unix.FAN_MODIFY:         "Modify",
+		unix.FAN_CLOSE_WRITE:    "CloseWrite",
+		unix.FAN_CLOSE_NOWRITE:  "CloseNoWrite",
+		unix.FAN_OPEN:           "Open",
+		unix.FAN_OPEN_EXEC:      "OpenExec",
+		unix.FAN_ATTRIB:         "AttribChange",
+		unix.FAN_CREATE:         "Create",
+		unix.FAN_DELETE:         "Delete",
+		unix.FAN_DELETE_SELF:    "SelfDelete",
+		unix.FAN_MOVED_FROM:     "MovedFrom",
+		unix.FAN_MOVED_TO:       "MovedTo",
+		unix.FAN_MOVE_SELF:      "SelfMove",
+		unix.FAN_OPEN_PERM:      "PermissionToOpen",
+		unix.FAN_OPEN_EXEC_PERM: "PermissionToExecute",
+		unix.FAN_ACCESS_PERM:    "PermissionToAccess",
 	}
 	var eventTypeList []string
 	for k, v := range eventTypes {
