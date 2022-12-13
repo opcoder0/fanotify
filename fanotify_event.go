@@ -93,7 +93,7 @@ func flagsValid(flags uint) error {
 	return nil
 }
 
-func isFanotifyNotificationMarkValid(flags uint, mask uint64) error {
+func isFanotifyMarkMaskValid(flags uint, mask uint64) error {
 	isSet := func(n, k uint64) bool {
 		return n&k == k
 	}
@@ -120,20 +120,6 @@ func checkMask(mask uint64, validEventTypes []EventType) error {
 		return ErrInvalidFlagCombination
 	}
 	return nil
-}
-
-func isFanotifyPermissionMarkValid(mask uint64) error {
-	validPermissions := []EventType{
-		FileOpenPermission,
-		FileOpenToExecutePermission,
-		FileAccessPermission,
-		FileModified,
-		FileClosedAfterWrite,
-		FileOpened,
-		FileAttribChanged,
-		FileDeleted,
-	}
-	return checkMask(mask, validPermissions)
 }
 
 // Check if specified fanotify_init flags are supported for the given
@@ -225,7 +211,7 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 }
 
 // permissionType is ignored when isNotificationListener is true.
-func newListener(mountpointPath string, entireMount bool, isNotificationListener bool, permissionType PermissionType) (*Listener, error) {
+func newListener(mountpointPath string, entireMount bool, notificationOnly bool, permissionType PermissionType) (*Listener, error) {
 
 	var flags, eventFlags uint
 
@@ -233,12 +219,12 @@ func newListener(mountpointPath string, entireMount bool, isNotificationListener
 	if err != nil {
 		return nil, err
 	}
-	if !isNotificationListener {
-		// permission events
+	if !notificationOnly {
+		// permission + notification events; cannot have FID with this.
 		switch permissionType {
-		case PermissionPreContent:
+		case PreContent:
 			flags = unix.FAN_CLASS_PRE_CONTENT | unix.FAN_CLOEXEC
-		case PermissionPostContent:
+		case PostContent:
 			flags = unix.FAN_CLASS_CONTENT | unix.FAN_CLOEXEC
 		default:
 			return nil, os.ErrInvalid
@@ -293,19 +279,20 @@ func newListener(mountpointPath string, entireMount bool, isNotificationListener
 		return nil, fmt.Errorf("stopper error: cannot set fd to non-blocking: %v", err)
 	}
 	listener := &Listener{
-		fd:                     fd,
-		flags:                  flags,
-		mountpoint:             mountpoint,
-		kernelMajorVersion:     maj,
-		kernelMinorVersion:     min,
-		entireMount:            entireMount,
-		isNotificationListener: isNotificationListener,
-		watches:                make(map[string]bool),
+		fd:                 fd,
+		flags:              flags,
+		mountpoint:         mountpoint,
+		kernelMajorVersion: maj,
+		kernelMinorVersion: min,
+		entireMount:        entireMount,
+		notificationOnly:   notificationOnly,
+		watches:            make(map[string]bool),
 		stopper: struct {
 			r *os.File
 			w *os.File
 		}{r, w},
-		Events: make(chan Event, 4096),
+		Events:           make(chan Event, 4096),
+		PermissionEvents: make(chan Event, 4096),
 	}
 	return listener, nil
 }
@@ -318,14 +305,8 @@ func (l *Listener) fanotifyMark(path string, flags uint, mask uint64) error {
 	if !fanotifyMarkFlagsKernelSupport(mask, l.kernelMajorVersion, l.kernelMinorVersion) {
 		panic("some of the mark mask combinations specified are not supported on the current kernel; refer to the documentation")
 	}
-	if l.isNotificationListener {
-		if err := isFanotifyNotificationMarkValid(flags, mask); err != nil {
-			return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
-		}
-	} else {
-		if err := isFanotifyPermissionMarkValid(mask); err != nil {
-			return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
-		}
+	if err := isFanotifyMarkMaskValid(flags, mask); err != nil {
+		return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
 	}
 	remove := flags&unix.FAN_MARK_REMOVE == unix.FAN_MARK_REMOVE
 	_, found := l.watches[path]
@@ -438,7 +419,13 @@ func (l *Listener) readEvents() error {
 					EventTypes: EventType(mask),
 					Pid:        int(metadata.Pid),
 				}
-				l.Events <- event
+				if mask&unix.FAN_ACCESS_PERM == unix.FAN_ACCESS_PERM ||
+					mask&unix.FAN_OPEN_PERM == unix.FAN_OPEN_PERM ||
+					mask&unix.FAN_OPEN_EXEC_PERM == unix.FAN_OPEN_EXEC_PERM {
+					l.PermissionEvents <- event
+				} else {
+					l.Events <- event
+				}
 				i += int(metadata.Event_len)
 				n -= int(metadata.Event_len)
 				metadata = (*unix.FanotifyEventMetadata)(unsafe.Pointer(&buf[i]))
@@ -487,6 +474,8 @@ func (l *Listener) readEvents() error {
 					EventTypes: EventType(mask),
 					Pid:        int(metadata.Pid),
 				}
+				// As of the kernel release (6.0) permission events cannot have FID flags.
+				// So the event here is always a notification event
 				l.Events <- event
 				i += int(metadata.Event_len)
 				n -= int(metadata.Event_len)

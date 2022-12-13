@@ -35,7 +35,7 @@ func main() {
 		os.Exit(1)
 	}
 	mountPoint := "/"
-	listener, err := fanotify.NewListener(mountPoint, false)
+	listener, err := fanotify.NewListener(mountPoint, false, fanotify.PermissionNone)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -99,7 +99,7 @@ func main() {
 		fmt.Println("missing mount path")
 		os.Exit(1)
 	}
-	listener, err := fanotify.NewListener(mountPoint, true)
+	listener, err := fanotify.NewListener(mountPoint, true, fanotify.PermissionNone)
 	if err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -130,11 +130,9 @@ func main() {
 
 Certain flag combinations / event types cause issues with event reporting.
 
-- `fanotify.FileCreated` (`unix.FAN_CREATE`) cannot be or-ed / combined with `fanotify.FileClosed` (`unix.FAN_CLOSE_WRITE` or `unix.FAN_CLOSE_NOWRITE`). The `fanotify` event notification group does not generate any event for this combination.
-
-- Using `fanotify.FileOpened` with any of the event types containing `OrDirectory` (`unix.FAN_ONDIR`) causes an event flood for the directory and then stopping raising any events at all.
-
-- `fanotifyFileOrDirectoryOpened` with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
+- `fanotify.FileCreated` cannot be or-ed / combined with `fanotify.FileClosed`. The `fanotify` event notification group does not generate any event for this combination.
+- Using `fanotify.FileOpened` with any of the event types containing `OrDirectory` causes numerous duplicate events for the path.
+- `fanotifyFileOrDirectoryOpened` with any of the other event types causes numerous duplicate events for the path.
 
 ## Tests
 

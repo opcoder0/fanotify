@@ -7,14 +7,14 @@ import (
 )
 
 func ExampleNewListener() {
-	if _, err := fanotify.NewNotificationListener("/", true); err != nil {
+	if _, err := fanotify.NewListener("/", true, fanotify.PostContent); err != nil {
 		log.Fatal("Cannot create listener for mount /", err)
 	}
 }
 
 func ExampleListener_AddWatch() {
-	var listener *fanotify.NotificationListener
-	listener, err := fanotify.NewNotificationListener("/", false)
+	var listener *fanotify.Listener
+	listener, err := fanotify.NewListener("/", false, fanotify.PermissionNone)
 	if err != nil {
 		log.Fatal("Cannot create listener for mount /", err)
 	}
@@ -22,10 +22,10 @@ func ExampleListener_AddWatch() {
 }
 
 func ExampleListener_AddWatch_all() {
-	var listener *fanotify.NotificationListener
+	var listener *fanotify.Listener
 	var eventTypes fanotify.EventType
 
-	listener, err := fanotify.NewNotificationListener("/", false)
+	listener, err := fanotify.NewListener("/", false, fanotify.PermissionNone)
 	if err != nil {
 		log.Fatal("Cannot create listener for path /", err)
 	}
