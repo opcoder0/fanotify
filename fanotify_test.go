@@ -39,7 +39,7 @@ func runAsCmd(args ...string) (int, error) {
 }
 
 func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -67,7 +67,7 @@ func TestWithCapSysAdmFanotifyFileAccessed(t *testing.T) {
 }
 
 func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -95,7 +95,7 @@ func TestWithCapSysAdmFanotifyFileModified(t *testing.T) {
 }
 
 func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -123,7 +123,7 @@ func TestWithCapSysAdmFanotifyFileClosed(t *testing.T) {
 }
 
 func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -151,7 +151,7 @@ func TestWithCapSysAdmFanotifyFileOpen(t *testing.T) {
 }
 
 func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -175,7 +175,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryOpen(t *testing.T) {
 }
 
 func TestWithCapSysAdmFanotifyFileOpenForExec(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -208,7 +208,7 @@ exit 0
 }
 
 func TestWithCapSysAdmFanotifyFileAttribChanged(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -241,7 +241,7 @@ exit 0
 }
 
 func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -265,7 +265,7 @@ func TestWithCapSysAdmFanotifyFileCreated(t *testing.T) {
 }
 
 func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	watchDir := t.TempDir()
@@ -290,7 +290,7 @@ func TestWithCapSysAdmFanotifyFileOrDirectoryCreated(t *testing.T) {
 
 func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 
@@ -319,7 +319,7 @@ func TestWithCapSysAdmFanotifyFileDeleted(t *testing.T) {
 
 func TestWithCapSysAdmFanotifyFileOrDirectoryDeleted(t *testing.T) {
 
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 
@@ -355,7 +355,7 @@ func TestEventTypes(t *testing.T) {
 }
 
 func TestMultipleEvents(t *testing.T) {
-	l, err := NewListener("/", false)
+	l, err := NewNotificationListener("/", false)
 	assert.Nil(t, err)
 	assert.NotNil(t, l)
 	go l.Start()
@@ -413,7 +413,7 @@ func TestMultipleEvents(t *testing.T) {
 // FileCreated and FileClosed combination does not raise any events
 func TestWithCapSysAdmMarkCreateCloseBug(t *testing.T) {
 	if *bug {
-		l, err := NewListener("/", false)
+		l, err := NewNotificationListener("/", false)
 		assert.Nil(t, err)
 		assert.NotNil(t, l)
 		go l.Start()
@@ -461,7 +461,7 @@ func TestWithCapSysAdmMarkFileOrDirectoryOpenedBug(t *testing.T) {
 		assert.Nil(t, err)
 
 		// start the listener
-		l, err := NewListener("/", false)
+		l, err := NewNotificationListener("/", false)
 		assert.Nil(t, err)
 		assert.NotNil(t, l)
 		go l.Start()
@@ -515,5 +515,38 @@ func TestWithCapSysAdmMarkFileOrDirectoryOpenedBug(t *testing.T) {
 		}
 	} else {
 		t.Skip()
+	}
+}
+
+func TestIsFanotifyIsFanotifyPermissionMarkValid(t *testing.T) {
+	type test struct {
+		mask  EventType
+		valid bool
+	}
+	tests := []test{
+		{
+			FileOpenPermission,
+			true,
+		},
+		{
+			FileOpenPermission.Or(FileOpenToExecutePermission),
+			true,
+		},
+		{
+			FileOpenPermission.Or(FileOpenToExecutePermission.Or(FileAccessPermission)),
+			true,
+		},
+		{
+			FileOpenPermission.Or(FileOpenToExecutePermission.Or(FileMovedTo)),
+			false,
+		},
+	}
+	for _, tc := range tests {
+		err := isFanotifyPermissionMarkValid(uint64(tc.mask))
+		if tc.valid {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, err)
+		}
 	}
 }

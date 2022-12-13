@@ -93,4 +93,14 @@ const (
 	// WatchedFileOrDirectoryMoved event when a watched file or directory has moved
 	// Requires Linux kernel 5.1 or later (requires FID)
 	WatchedFileOrDirectoryMoved EventType = unix.FAN_MOVE_SELF | unix.FAN_ONDIR
+
+	// FileOpenPermission event when a permission to open a file or directory is requested
+	FileOpenPermission EventType = unix.FAN_OPEN_PERM
+
+	// FileOpenToExecutePermission event when a permission to open a file for
+	// execution is requested
+	FileOpenToExecutePermission EventType = unix.FAN_OPEN_EXEC_PERM
+
+	// FileAccessPermission event when a permission to read a file or directory is requested
+	FileAccessPermission EventType = unix.FAN_ACCESS_PERM
 )

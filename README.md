@@ -107,10 +107,13 @@ func main() {
 	fmt.Println("Listening to events for:", mountPoint)
 	var eventTypes fanotify.EventType
 	eventTypes = fanotify.FileAccessed |
-			fanotify.FileOrDirectoryAccessed |
+	                fanotify.FileOrDirectoryAccessed |
 			fanotify.FileModified |
-			fanotify.FileOpenedForExec |
-			fanotify.FileOpened
+			fanotify.FileClosedAfterWrite |
+			fanotify.FileClosedWithNoWrite |
+			fanotify.FileOpened |
+			fanotify.FileOrDirectoryOpened |
+			fanotify.FileOpenedForExec
 	err = listener.MarkMount(eventTypes, false)
 	if err != nil {
 		fmt.Println("MarkMount:", err)

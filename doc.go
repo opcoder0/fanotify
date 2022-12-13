@@ -1,4 +1,4 @@
-// Package fanotify library provides a simple API to monitor filesystem for events.
+// Package fanotify library provides a simple API to monitor filesystem for notification and permission events.
 //
 // The listener is initialized with flags automatically based on the kernel version. The mark flag features that specify the
 // the events to monitor a file/directory are validated and checked for valid combinations and validated against the kernel

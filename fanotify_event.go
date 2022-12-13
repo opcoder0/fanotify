@@ -93,14 +93,47 @@ func flagsValid(flags uint) error {
 	return nil
 }
 
-func fanotifyMarkMaskValid(mask uint64) error {
+func isFanotifyNotificationMarkValid(flags uint, mask uint64) error {
 	isSet := func(n, k uint64) bool {
 		return n&k == k
 	}
-	if isSet(mask, unix.FAN_MARK_MOUNT) && (isSet(mask, unix.FAN_CREATE) || isSet(mask, unix.FAN_ATTRIB) || isSet(mask, unix.FAN_MOVE) || isSet(mask, unix.FAN_DELETE_SELF)) {
-		return errors.New("mountpoint cannot be watched for create, attrib, move or delete self event types")
+	if isSet(uint64(flags), unix.FAN_MARK_MOUNT) {
+		if isSet(mask, unix.FAN_CREATE) ||
+			isSet(mask, unix.FAN_ATTRIB) ||
+			isSet(mask, unix.FAN_MOVE) ||
+			isSet(mask, unix.FAN_DELETE_SELF) ||
+			isSet(mask, unix.FAN_DELETE) {
+			return errors.New("mountpoint cannot be watched for create, attrib, move or delete self event types")
+		}
 	}
 	return nil
+}
+
+func checkMask(mask uint64, validEventTypes []EventType) error {
+	flags := mask
+	for _, v := range validEventTypes {
+		if flags&uint64(v) == uint64(v) {
+			flags = flags ^ uint64(v)
+		}
+	}
+	if flags != 0 {
+		return ErrInvalidFlagCombination
+	}
+	return nil
+}
+
+func isFanotifyPermissionMarkValid(mask uint64) error {
+	validPermissions := []EventType{
+		FileOpenPermission,
+		FileOpenToExecutePermission,
+		FileAccessPermission,
+		FileModified,
+		FileClosedAfterWrite,
+		FileOpened,
+		FileAttribChanged,
+		FileDeleted,
+	}
+	return checkMask(mask, validPermissions)
 }
 
 // Check if specified fanotify_init flags are supported for the given
@@ -191,7 +224,8 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 		int(meta.Event_len) <= n)
 }
 
-func newListener(mountpointPath string, entireMount bool) (*Listener, error) {
+// permissionType is ignored when isNotificationListener is true.
+func newListener(mountpointPath string, entireMount bool, isNotificationListener bool, permissionType PermissionType) (*Listener, error) {
 
 	var flags, eventFlags uint
 
@@ -199,25 +233,37 @@ func newListener(mountpointPath string, entireMount bool) (*Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	switch {
-	case maj < 5:
-		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
-	case maj == 5:
-		if min < 1 {
+	if !isNotificationListener {
+		// permission events
+		switch permissionType {
+		case PermissionPreContent:
+			flags = unix.FAN_CLASS_PRE_CONTENT | unix.FAN_CLOEXEC
+		case PermissionPostContent:
+			flags = unix.FAN_CLASS_CONTENT | unix.FAN_CLOEXEC
+		default:
+			return nil, os.ErrInvalid
+		}
+	} else {
+		switch {
+		case maj < 5:
 			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
-		}
-		if min >= 1 && min < 9 {
-			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_FID
-		}
-		if min >= 9 {
+		case maj == 5:
+			if min < 1 {
+				flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
+			}
+			if min >= 1 && min < 9 {
+				flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_FID
+			}
+			if min >= 9 {
+				flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
+			}
+		case maj > 5:
 			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
 		}
-	case maj > 5:
-		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC | unix.FAN_REPORT_DIR_FID | unix.FAN_REPORT_NAME
-	}
-	// FAN_MARK_MOUNT cannot be specified with FAN_REPORT_FID, FAN_REPORT_DIR_FID, FAN_REPORT_NAME
-	if entireMount {
-		flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
+		// FAN_MARK_MOUNT cannot be specified with FAN_REPORT_FID, FAN_REPORT_DIR_FID, FAN_REPORT_NAME
+		if entireMount {
+			flags = unix.FAN_CLASS_NOTIF | unix.FAN_CLOEXEC
+		}
 	}
 	eventFlags = unix.O_RDONLY | unix.O_LARGEFILE | unix.O_CLOEXEC
 	if err := flagsValid(flags); err != nil {
@@ -232,7 +278,7 @@ func newListener(mountpointPath string, entireMount bool) (*Listener, error) {
 	}
 	mountpoint, err := os.Open(mountpointPath)
 	if err != nil {
-		return nil, fmt.Errorf("error opening mountpoint %s: %w", mountpointPath, err)
+		return nil, fmt.Errorf("error opening mount point %s: %w", mountpointPath, err)
 	}
 	r, w, err := os.Pipe()
 	if err != nil {
@@ -247,13 +293,14 @@ func newListener(mountpointPath string, entireMount bool) (*Listener, error) {
 		return nil, fmt.Errorf("stopper error: cannot set fd to non-blocking: %v", err)
 	}
 	listener := &Listener{
-		fd:                 fd,
-		flags:              flags,
-		mountpoint:         mountpoint,
-		kernelMajorVersion: maj,
-		kernelMinorVersion: min,
-		entireMount:        entireMount,
-		watches:            make(map[string]bool),
+		fd:                     fd,
+		flags:                  flags,
+		mountpoint:             mountpoint,
+		kernelMajorVersion:     maj,
+		kernelMinorVersion:     min,
+		entireMount:            entireMount,
+		isNotificationListener: isNotificationListener,
+		watches:                make(map[string]bool),
 		stopper: struct {
 			r *os.File
 			w *os.File
@@ -263,17 +310,24 @@ func newListener(mountpointPath string, entireMount bool) (*Listener, error) {
 	return listener, nil
 }
 
-func (l *Listener) fanotifyMark(path string, flags uint, mask uint64, remove bool) error {
-	skip := true
+func (l *Listener) fanotifyMark(path string, flags uint, mask uint64) error {
 	if l == nil {
-		return ErrNilListener
+		panic("nil listener")
 	}
+	skip := true
 	if !fanotifyMarkFlagsKernelSupport(mask, l.kernelMajorVersion, l.kernelMinorVersion) {
 		panic("some of the mark mask combinations specified are not supported on the current kernel; refer to the documentation")
 	}
-	if err := fanotifyMarkMaskValid(mask); err != nil {
-		return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
+	if l.isNotificationListener {
+		if err := isFanotifyNotificationMarkValid(flags, mask); err != nil {
+			return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
+		}
+	} else {
+		if err := isFanotifyPermissionMarkValid(mask); err != nil {
+			return fmt.Errorf("%v: %w", err, ErrInvalidFlagCombination)
+		}
 	}
+	remove := flags&unix.FAN_MARK_REMOVE == unix.FAN_MARK_REMOVE
 	_, found := l.watches[path]
 	if found {
 		if remove {
