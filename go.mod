@@ -3,9 +3,9 @@ module github.com/opcoder0/fanotify
 go 1.17
 
 require (
+	github.com/opcoder0/capabilities v0.0.0-20221222060822-17fd73bffd2a
 	github.com/stretchr/testify v1.8.1
-	github.com/syndtr/gocapability v0.0.0-20200815063812-42c35b437635
-	golang.org/x/sys v0.2.0
+	golang.org/x/sys v0.3.0
 )
 
 require (
