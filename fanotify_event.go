@@ -25,10 +25,6 @@ type fanotifyEventInfoHeader struct {
 	Len      uint16
 }
 
-type kernelFSID struct {
-	val [2]int32
-}
-
 // FanotifyEventInfoFID represents a unique file identifier info record.
 // This structure is used for records of types FAN_EVENT_INFO_TYPE_FID,
 // FAN_EVENT_INFO_TYPE_DFID and FAN_EVENT_INFO_TYPE_DFID_NAME.
@@ -36,7 +32,7 @@ type kernelFSID struct {
 // name immediately after the file handle.
 type fanotifyEventInfoFID struct {
 	Header     fanotifyEventInfoHeader
-	fsid       kernelFSID
+	fsid       unix.Fsid
 	fileHandle byte
 }
 
@@ -332,7 +328,7 @@ func getFileHandle(metadataLen uint16, buf []byte, i int) *unix.FileHandle {
 	var fhType int32  // this is int handle_type; but Go uses int32
 
 	sizeOfFanotifyEventInfoHeader := uint32(unsafe.Sizeof(fanotifyEventInfoHeader{}))
-	sizeOfKernelFSIDType := uint32(unsafe.Sizeof(kernelFSID{}))
+	sizeOfKernelFSIDType := uint32(unsafe.Sizeof(unix.Fsid{}))
 	sizeOfUint32 := uint32(unsafe.Sizeof(fhSize))
 	j := uint32(i) + uint32(metadataLen) + sizeOfFanotifyEventInfoHeader + sizeOfKernelFSIDType
 	binary.Read(bytes.NewReader(buf[j:j+sizeOfUint32]), binary.LittleEndian, &fhSize)
@@ -350,7 +346,7 @@ func getFileHandleWithName(metadataLen uint16, buf []byte, i int) (*unix.FileHan
 	var nameBytes bytes.Buffer
 
 	sizeOfFanotifyEventInfoHeader := uint32(unsafe.Sizeof(fanotifyEventInfoHeader{}))
-	sizeOfKernelFSIDType := uint32(unsafe.Sizeof(kernelFSID{}))
+	sizeOfKernelFSIDType := uint32(unsafe.Sizeof(unix.Fsid{}))
 	sizeOfUint32 := uint32(unsafe.Sizeof(fhSize))
 	j := uint32(i) + uint32(metadataLen) + sizeOfFanotifyEventInfoHeader + sizeOfKernelFSIDType
 	binary.Read(bytes.NewReader(buf[j:j+sizeOfUint32]), binary.LittleEndian, &fhSize)
