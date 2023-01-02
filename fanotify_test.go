@@ -410,6 +410,60 @@ func TestMultipleEvents(t *testing.T) {
 	}
 }
 
+func TestAddPathBeforeWatchStart(t *testing.T) {
+	l, err := NewListener("/", false, PermissionNone)
+	assert.Nil(t, err)
+	assert.NotNil(t, l)
+	go l.Start()
+	defer l.Stop()
+
+	watchDir := t.TempDir()
+
+	testFile := fmt.Sprintf("%s/test.txt", watchDir)
+	pid, err := runAsCmd("touch", testFile) // create file
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Logf("FileCreated Event not received as expected")
+	case event := <-l.Events:
+		t.Errorf("Timeout Error: Unexpected FileCreated event received (%s)", event)
+	}
+	touchPid := pid
+
+	eventTypes := FileModified.Or(FileDeleted)
+	l.AddWatch(watchDir, eventTypes)
+	// modify file
+	os.WriteFile(testFile, []byte("test string"), 0666)
+	pid = os.Getpid()
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileModified event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		assert.True(t, event.EventTypes.Has(FileModified))
+		t.Logf("Received: (%s)", event)
+	}
+
+	t.Logf("Pids: Self(%d), Touch(%d)", pid, touchPid)
+	// NOTE: os.WriteFile sends two modify events; so draining them
+	for len(l.Events) > 0 {
+		e := <-l.Events
+		t.Logf("Drain-Event: (%s)", e)
+	}
+	pid, err = runAsCmd("rm", "-f", testFile)
+	assert.Nil(t, err)
+	select {
+	case <-time.After(100 * time.Millisecond):
+		t.Error("Timeout Error: FileDeleted event not received")
+	case event := <-l.Events:
+		assert.Equal(t, fmt.Sprintf("%s/%s", event.Path, event.FileName), testFile)
+		assert.Equal(t, event.Pid, pid)
+		assert.True(t, event.EventTypes.Has(FileDeleted))
+		t.Logf("Received: (%s)", event)
+	}
+}
+
 // FileCreated and FileClosed combination does not raise any events
 func TestWithCapSysAdmMarkCreateCloseBug(t *testing.T) {
 	if *bug {
