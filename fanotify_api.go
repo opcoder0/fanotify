@@ -73,6 +73,8 @@ type Listener struct {
 	fd int
 	// flags passed to fanotify_init
 	flags uint
+	// markMask current fanotify mark mask
+	markMask uint64
 	// mount fd is the file descriptor of the mountpoint
 	mountpoint         *os.File
 	kernelMajorVersion int
@@ -203,14 +205,23 @@ func (l *Listener) Stop() {
 // for - [FileCreated], [FileAttribChanged], [FileMovedTo], [FileMovedFrom], [WatchedFileDeleted],
 // [WatchedFileOrDirectoryDeleted], [FileDeleted], [FileOrDirectoryDeleted]
 func (l *Listener) WatchMount(eventTypes EventType) error {
-	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(eventTypes))
+	mask := l.getMaskAfterAdd(eventTypes)
+	l.clearWatch()
+	l.markMask = uint64(mask)
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(mask))
 }
 
 // UnwatchMount removes the notification marks for the entire mount point.
 // This method returns an [ErrWatchPath] if the listener was not initialized to monitor
 // the entire mount point. To unmark specific files or directories use [DeleteWatch] method.
 func (l *Listener) UnwatchMount(eventTypes EventType) error {
-	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_REMOVE|unix.FAN_MARK_MOUNT, uint64(eventTypes))
+	if l.markMask == 0 {
+		return l.clearWatch()
+	}
+	remaining := l.getMaskAfterRemove(eventTypes)
+	l.clearWatch()
+	l.markMask = uint64(remaining)
+	return l.fanotifyMark(l.mountpoint.Name(), unix.FAN_MARK_ADD|unix.FAN_MARK_MOUNT, uint64(remaining))
 }
 
 // AddWatch adds or modifies the fanotify mark for the specified path.
@@ -221,6 +232,11 @@ func (l *Listener) UnwatchMount(eventTypes EventType) error {
 //  - [FileCreated] cannot be or-ed / combined with [FileClosed]. The fanotify system does not generate any event for this combination.
 //  - [FileOpened] with any of the event types containing OrDirectory causes an event flood for the directory and then stopping raising any events at all.
 //  - [FileOrDirectoryOpened] with any of the other event types causes an event flood for the directory and then stopping raising any events at all.
+//
+// NOTE:
+// Any event type that contains "OrDirectory" applies the OrDirectory mask to any other applicable
+// marks. For example adding [FileDeleted] and [FileOrDirectoryOpened] will apply "OrDirectory" to
+// [FileDeleted] thus the resulting mask will be set to [FileOrDirectoryOpened] and [FileOrDirectoryDeleted]
 func (l *Listener) AddWatch(path string, eventTypes EventType) error {
 	if l == nil {
 		panic("nil listener")
@@ -228,7 +244,34 @@ func (l *Listener) AddWatch(path string, eventTypes EventType) error {
 	if l.entireMount {
 		return os.ErrInvalid
 	}
-	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD))
+	mask := l.getMaskAfterAdd(eventTypes)
+	l.clearWatch()
+	l.markMask = uint64(mask)
+	return l.fanotifyMark(path, unix.FAN_MARK_ADD, uint64(mask|unix.FAN_EVENT_ON_CHILD))
+}
+
+// DeleteWatch removes/unmarks the fanotify mark for the specified path.
+// Calling DeleteWatch on the listener initialized to monitor the entire mount point
+// results in [os.ErrInvalid]. Use [UnwatchMount] for deleting marks on the mount point.
+func (l *Listener) DeleteWatch(parentDir string, eventTypes EventType) error {
+	if l.entireMount {
+		return os.ErrInvalid
+	}
+	if l.markMask == 0 {
+		return l.clearWatch()
+	}
+	remaining := l.getMaskAfterRemove(eventTypes)
+	l.clearWatch()
+	l.markMask = uint64(remaining)
+	return l.fanotifyMark(parentDir, unix.FAN_MARK_ADD, uint64(remaining|unix.FAN_EVENT_ON_CHILD))
+}
+
+// ClearWatch stops watching for all event types
+func (l *Listener) ClearWatch() error {
+	if l == nil {
+		panic("nil listener")
+	}
+	return l.clearWatch()
 }
 
 // Allow sends an "allowed" response to the permission request event.
@@ -249,28 +292,6 @@ func (l *Listener) Deny(e Event) {
 	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, &response)
 	unix.Write(l.fd, buf.Bytes())
-}
-
-// DeleteWatch removes/unmarks the fanotify mark for the specified path.
-// Calling DeleteWatch on the listener initialized to monitor the entire mount point
-// results in [os.ErrInvalid]. Use [UnwatchMount] for deleting marks on the mount point.
-func (l *Listener) DeleteWatch(parentDir string, eventTypes EventType) error {
-	if l.entireMount {
-		return os.ErrInvalid
-	}
-	return l.fanotifyMark(parentDir, unix.FAN_MARK_REMOVE, uint64(eventTypes|unix.FAN_EVENT_ON_CHILD))
-}
-
-// ClearWatch stops watching for all event types
-func (l *Listener) ClearWatch() error {
-	if l == nil {
-		panic("nil listener")
-	}
-	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
-		return err
-	}
-	l.watches = make(map[string]bool)
-	return nil
 }
 
 // Has returns true if event types (e) contains the passed in event type (et).

@@ -204,6 +204,22 @@ func fanotifyEventOK(meta *unix.FanotifyEventMetadata, n int) bool {
 		int(meta.Event_len) <= n)
 }
 
+func (l *Listener) getMaskAfterRemove(removeMask EventType) EventType {
+	if l.markMask == 0 {
+		return EventType(0)
+	}
+	mask := EventType(l.markMask) ^ removeMask
+	return mask
+}
+
+func (l *Listener) getMaskAfterAdd(addMask EventType) EventType {
+	if l.markMask == 0 {
+		return addMask
+	}
+	mask := EventType(l.markMask) | addMask
+	return mask
+}
+
 // permissionType is ignored when isNotificationListener is true.
 func newListener(mountpointPath string, entireMount bool, notificationOnly bool, permissionType PermissionType) (*Listener, error) {
 
@@ -289,6 +305,15 @@ func newListener(mountpointPath string, entireMount bool, notificationOnly bool,
 		PermissionEvents: make(chan Event, 4096),
 	}
 	return listener, nil
+}
+
+func (l *Listener) clearWatch() error {
+	if err := unix.FanotifyMark(l.fd, unix.FAN_MARK_FLUSH, 0, -1, ""); err != nil {
+		return err
+	}
+	l.watches = make(map[string]bool)
+	l.markMask = 0
+	return nil
 }
 
 func (l *Listener) fanotifyMark(path string, flags uint, mask uint64) error {
