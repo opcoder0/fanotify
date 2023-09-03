@@ -1,5 +1,7 @@
 # Fanotify Library
 
+![Fanotify](https://github.com/opcoder0/fanotify/blob/main/images/fanotify.jpeg)
+
 Fanotify library provides a simple API to monitor filesystem for events.
 
 The listener is initialized with flags automatically based on the kernel version. The mark flag features that specify the
